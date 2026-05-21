@@ -1,0 +1,913 @@
+<!DOCTYPE HTML>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <script>
+    (function() {
+      const t = localStorage.getItem('cscope-theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <title>Crazy Scope (administration)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f7fa;
+      --text-primary: #2c3e50;
+      --text-secondary: #7f8c8d;
+      --border-color: #e1e8ed;
+      --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      --accent-color: #3498db;
+      --accent-hover: #2980b9;
+      --neutral-bg: #ecf0f1;
+      --neutral-fill: #2ecc71;
+      --tab-inactive: #95a5a6;
+      --progress-bg: #3498db;
+      --progress-complete: #2ecc71;
+      --danger-color: #e74c3c;
+      --danger-hover: #c0392b;
+    }
+
+    [data-theme="dark"] {
+      --bg-primary: #1a1a2e;
+      --bg-secondary: #16213e;
+      --text-primary: #eee;
+      --text-secondary: #95a5a6;
+      --border-color: #2c3e50;
+      --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      --accent-color: #3498db;
+      --accent-hover: #5dade2;
+      --neutral-bg: #34495e;
+      --neutral-fill: #27ae60;
+      --tab-inactive: #7f8c8d;
+      --progress-bg: #2980b9;
+      --progress-complete: #27ae60;
+      --danger-color: #e74c3c;
+      --danger-hover: #ff6b6b;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      transition: background-color 0.3s, color 0.3s;
+      padding: 20px;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+    h1 { font-size: 2em; font-weight: 600; }
+    h1 .accent { color: var(--accent-color); }
+
+    .theme-toggle {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 25px;
+      padding: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.3s;
+    }
+    .theme-toggle:hover { transform: scale(1.05); }
+    .theme-icon { font-size: 24px; display: flex; align-items: center; justify-content: center; }
+
+    /* === Section "Etat systeme" === */
+    .sysinfo-section {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 30px;
+    }
+    .sysinfo-header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 15px;
+    }
+    .sysinfo-icon { width: 24px; height: 24px; stroke: var(--text-primary); }
+    .sysinfo-label {
+      color: var(--text-secondary);
+      font-size: 0.9em;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 500;
+    }
+    .sysinfo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 15px;
+    }
+    .sysinfo-item {
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .sysinfo-item-label {
+      font-size: 0.72em;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .sysinfo-item-value {
+      font-size: 1em;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      word-break: break-all;
+    }
+
+    /* === Onglets === */
+    .tabs-container {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      box-shadow: var(--card-shadow);
+      overflow: hidden;
+      margin-bottom: 30px;
+    }
+    .tabs-header {
+      display: flex;
+      border-bottom: 2px solid var(--border-color);
+    }
+    .tab {
+      flex: 1;
+      padding: 18px;
+      background: transparent;
+      border: none;
+      color: var(--tab-inactive);
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      position: relative;
+      font-family: inherit;
+    }
+    .tab:hover { background: var(--bg-primary); }
+    .tab.active { color: var(--accent-color); }
+    .tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: -2px; left: 0; right: 0;
+      height: 2px;
+      background: var(--accent-color);
+    }
+    .tab-content { display: none; padding: 30px; }
+    .tab-content.active { display: block; }
+
+    /* === Sections d'upload === */
+    .upload-section {
+      display: flex; flex-direction: column;
+      gap: 20px; align-items: center;
+    }
+    .file-input-wrapper { width: 100%; max-width: 500px; }
+    .file-input-label {
+      display: block;
+      width: 100%;
+      padding: 40px 20px;
+      background: var(--bg-primary);
+      border: 2px dashed var(--border-color);
+      border-radius: 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      color: var(--text-secondary);
+    }
+    .file-input-label:hover {
+      border-color: var(--accent-color);
+      background: var(--bg-secondary);
+    }
+    .file-input-label.has-file {
+      border-color: var(--accent-color);
+      color: var(--accent-color);
+    }
+    input[type="file"] { display: none; }
+    .file-name {
+      margin-top: 10px;
+      font-size: 0.9em;
+      color: var(--text-secondary);
+      word-break: break-all;
+    }
+
+    .btn {
+      padding: 14px 28px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      color: white;
+      background: var(--accent-color);
+      transition: all 0.3s;
+      display: inline-block;
+      min-width: 150px;
+      font-family: inherit;
+    }
+    .btn:hover:not(:disabled) {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+    }
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--border-color);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    .btn-danger {
+      background: var(--danger-color);
+      color: white;
+      min-width: auto;
+      padding: 8px 16px;
+      font-size: 0.9em;
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: var(--danger-hover);
+      box-shadow: 0 4px 8px rgba(231, 76, 60, 0.3);
+    }
+
+    .progress-container {
+      width: 100%; max-width: 500px;
+      margin-top: 20px;
+      display: none;
+    }
+    .progress-container.active { display: block; }
+    .progress-bar {
+      width: 100%; height: 40px;
+      background: var(--neutral-bg);
+      border-radius: 20px;
+      overflow: hidden;
+      position: relative;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--progress-bg);
+      transition: width 0.3s, background-color 0.3s;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 600; font-size: 0.9em;
+      width: 0%;
+    }
+    .progress-fill.complete { background: var(--progress-complete); }
+
+    .info-message {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 8px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      font-size: 0.9em;
+      text-align: center;
+    }
+    .info-message.success {
+      border-color: var(--neutral-fill);
+      color: var(--neutral-fill);
+    }
+    .info-message.warning {
+      border-color: var(--danger-color);
+      color: var(--danger-color);
+    }
+
+    .action-buttons {
+      display: flex; gap: 15px; flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 40px;
+    }
+
+    /* === Stockage === */
+    .storage-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+    .storage-stats { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+    .storage-stat { display: flex; flex-direction: column; gap: 5px; }
+    .storage-stat-label {
+      font-size: 0.78em;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .storage-stat-value {
+      font-size: 1.2em;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .storage-progress {
+      width: 100%; height: 20px;
+      background: var(--neutral-bg);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .storage-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-color), var(--accent-hover));
+      transition: width 0.3s;
+    }
+    .files-list { display: flex; flex-direction: column; gap: 10px; }
+    .file-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+    .file-item:hover { transform: translateX(5px); box-shadow: var(--card-shadow); }
+    .file-info { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+    .file-icon { width: 32px; height: 32px; stroke: var(--accent-color); flex-shrink: 0; }
+    .file-details { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .file-name-text { font-weight: 500; color: var(--text-primary); word-break: break-all; }
+    .file-size { font-size: 0.85em; color: var(--text-secondary); }
+    .file-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .loading-spinner {
+      display: flex; justify-content: center; align-items: center;
+      padding: 40px; color: var(--text-secondary);
+    }
+    .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+    .empty-state svg { width: 64px; height: 64px; margin: 0 auto 20px; stroke: var(--text-secondary); }
+
+    /* === Wi-Fi tab === */
+    .wifi-section { display: flex; flex-direction: column; gap: 20px; }
+    .wifi-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 600px) {
+      .wifi-form { grid-template-columns: 1fr; }
+    }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-label {
+      font-size: 0.78em;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 500;
+    }
+    .form-input {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.95em;
+      transition: border-color 0.2s;
+    }
+    .form-input:focus { outline: none; border-color: var(--accent-color); }
+
+    .wifi-scan-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .wifi-list { display: flex; flex-direction: column; gap: 8px; }
+    .wifi-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .wifi-item:hover {
+      border-color: var(--accent-color);
+      transform: translateX(3px);
+    }
+    .wifi-item-left { display: flex; align-items: center; gap: 10px; }
+    .wifi-signal {
+      display: inline-block;
+      font-size: 0.85em;
+      padding: 2px 8px;
+      border-radius: 20px;
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+    .wifi-secure-icon { font-size: 14px; }
+
+    @media (max-width: 768px) {
+      h1 { font-size: 1.5em; }
+      .tab { padding: 14px 8px; font-size: 0.85em; }
+      .tab svg { display: none; }
+      .tab-content { padding: 20px; }
+      .action-buttons { flex-direction: column; width: 100%; }
+      .btn { width: 100%; }
+      .file-item { flex-direction: column; align-items: flex-start; gap: 10px; }
+      .file-actions { width: 100%; justify-content: flex-end; }
+    }
+    @media (max-width: 480px) {
+      body { padding: 15px; }
+      .tabs-header { overflow-x: auto; overflow-y: hidden; }
+      .tab { white-space: nowrap; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Crazy <span class="accent">Scope</span> — Admin</h1>
+      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Changer le theme">
+        <span class="theme-icon" id="theme-icon">🌙</span>
+      </button>
+    </header>
+
+    <!-- ===== Etat systeme ===== -->
+    <div class="sysinfo-section">
+      <div class="sysinfo-header">
+        <svg class="sysinfo-icon" viewBox="0 0 24 24" fill="none" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+          <line x1="8" y1="21" x2="16" y2="21"/>
+          <line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        <span class="sysinfo-label">Etat systeme</span>
+      </div>
+      <div class="sysinfo-grid">
+        <div class="sysinfo-item"><span class="sysinfo-item-label">Mode</span><span class="sysinfo-item-value" id="sys-mode">—</span></div>
+        <div class="sysinfo-item"><span class="sysinfo-item-label">SSID</span><span class="sysinfo-item-value" id="sys-ssid">—</span></div>
+        <div class="sysinfo-item"><span class="sysinfo-item-label">IP</span><span class="sysinfo-item-value" id="sys-ip">—</span></div>
+        <div class="sysinfo-item"><span class="sysinfo-item-label">RSSI</span><span class="sysinfo-item-value" id="sys-rssi">—</span></div>
+        <div class="sysinfo-item"><span class="sysinfo-item-label">Uptime</span><span class="sysinfo-item-value" id="sys-uptime">—</span></div>
+        <div class="sysinfo-item"><span class="sysinfo-item-label">Heap libre</span><span class="sysinfo-item-value" id="sys-heap">—</span></div>
+        <div class="sysinfo-item"><span class="sysinfo-item-label">Firmware</span><span class="sysinfo-item-value" id="sys-sketch">—</span></div>
+      </div>
+    </div>
+
+    <!-- ===== Onglets ===== -->
+    <div class="tabs-container">
+      <div class="tabs-header">
+        <button class="tab active" onclick="switchTab(event, 'wifi')">
+          <svg style="width:20px;height:20px;vertical-align:middle;margin-right:8px;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+            <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+            <line x1="12" y1="20" x2="12.01" y2="20"/>
+          </svg>
+          Wi-Fi
+        </button>
+        <button class="tab" onclick="switchTab(event, 'upload')">
+          <svg style="width:20px;height:20px;vertical-align:middle;margin-right:8px;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+          </svg>
+          Upload
+        </button>
+        <button class="tab" onclick="switchTab(event, 'firmware')">
+          <svg style="width:20px;height:20px;vertical-align:middle;margin-right:8px;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+          Firmware
+        </button>
+        <button class="tab" onclick="switchTab(event, 'storage')">
+          <svg style="width:20px;height:20px;vertical-align:middle;margin-right:8px;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          Stockage
+        </button>
+      </div>
+
+      <!-- ===== Wi-Fi ===== -->
+      <div id="wifi-content" class="tab-content active">
+        <div class="wifi-section">
+          <div class="info-message">
+            Configurez les identifiants du reseau Wi-Fi auquel l'ESP32 doit se connecter (mode STA).
+            En cas d'echec, l'appareil redemarrera en point d'acces (mode AP).
+          </div>
+          <div class="wifi-form">
+            <div class="form-group">
+              <label class="form-label" for="wifi-ssid">SSID</label>
+              <input class="form-input" type="text" id="wifi-ssid" placeholder="Nom du reseau">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="wifi-pwd">Mot de passe</label>
+              <input class="form-input" type="password" id="wifi-pwd" placeholder="(vide si reseau ouvert)">
+            </div>
+          </div>
+          <div style="text-align:center;">
+            <button class="btn" id="wifi-save-btn">Enregistrer et redemarrer</button>
+          </div>
+
+          <div class="wifi-scan-header">
+            <span class="sysinfo-item-label">Reseaux detectes</span>
+            <button class="btn btn-secondary" onclick="scanWifi()">
+              <svg style="width:16px;height:16px;vertical-align:middle;margin-right:8px;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
+                <path d="M23 4v6h-6M1 20v-6h6"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+              Scanner
+            </button>
+          </div>
+          <div id="wifi-list" class="wifi-list">
+            <div class="empty-state">Cliquez sur "Scanner" pour lister les reseaux disponibles.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Upload ===== -->
+      <div id="upload-content" class="tab-content">
+        <form id="upload-form" class="upload-section">
+          <div class="file-input-wrapper">
+            <label for="upload-file" id="upload-label" class="file-input-label">
+              <svg style="width:48px;height:48px;margin:0 auto 10px;display:block;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+              </svg>
+              <div>Cliquez pour selectionner un fichier</div>
+              <div class="file-name" id="upload-filename"></div>
+            </label>
+            <input type="file" id="upload-file" name="filename">
+          </div>
+          <button type="submit" class="btn" id="upload-btn" disabled>Uploader le fichier</button>
+          <div class="progress-container" id="upload-progress-container">
+            <div class="progress-bar">
+              <div class="progress-fill" id="upload-progress">0%</div>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- ===== Firmware ===== -->
+      <div id="firmware-content" class="tab-content">
+        <form id="firmware-form" class="upload-section">
+          <div class="info-message warning">
+            ⚠️ La mise a jour du firmware redemarrera le microcontroleur. Assurez-vous d'avoir le bon fichier .bin avant de continuer.
+          </div>
+          <div class="file-input-wrapper">
+            <label for="firmware-file" id="firmware-label" class="file-input-label">
+              <svg style="width:48px;height:48px;margin:0 auto 10px;display:block;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+              </svg>
+              <div>Selectionner le fichier firmware (.bin)</div>
+              <div class="file-name" id="firmware-filename"></div>
+            </label>
+            <input type="file" id="firmware-file" name="update" accept=".bin">
+          </div>
+          <button type="submit" class="btn" id="firmware-btn" disabled>Mettre a jour le firmware</button>
+          <div class="progress-container" id="firmware-progress-container">
+            <div class="progress-bar">
+              <div class="progress-fill" id="firmware-progress">0%</div>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- ===== Stockage ===== -->
+      <div id="storage-content" class="tab-content">
+        <div class="storage-header">
+          <div class="storage-stats">
+            <div class="storage-stat">
+              <span class="storage-stat-label">Total</span>
+              <span class="storage-stat-value" id="storage-total">--</span>
+            </div>
+            <div class="storage-stat">
+              <span class="storage-stat-label">Utilise</span>
+              <span class="storage-stat-value" id="storage-used">--</span>
+            </div>
+            <div class="storage-stat">
+              <span class="storage-stat-label">Fichiers</span>
+              <span class="storage-stat-value" id="storage-count">--</span>
+            </div>
+          </div>
+          <button class="btn btn-secondary" onclick="loadStorageData()">
+            <svg style="width:16px;height:16px;vertical-align:middle;margin-right:8px;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
+              <path d="M23 4v6h-6M1 20v-6h6"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            Actualiser
+          </button>
+        </div>
+        <div class="storage-progress">
+          <div class="storage-progress-fill" id="storage-progress-fill" style="width: 0%"></div>
+        </div>
+        <div id="files-container" class="files-list">
+          <div class="loading-spinner">Chargement...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-buttons">
+      <a href="/" class="btn btn-secondary">
+        <svg style="width:20px;height:20px;vertical-align:middle;margin-right:8px;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        Retour a l'oscilloscope
+      </a>
+    </div>
+  </div>
+
+<script>
+'use strict';
+
+/* ===== Theme ===== */
+function toggleTheme() {
+  const html = document.documentElement;
+  const cur = html.getAttribute('data-theme');
+  const next = cur === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  document.getElementById('theme-icon').textContent = next === 'dark' ? '☀️' : '🌙';
+  localStorage.setItem('cscope-theme', next);
+}
+(function(){
+  const t = localStorage.getItem('cscope-theme') || 'dark';
+  document.getElementById('theme-icon').textContent = t === 'dark' ? '☀️' : '🌙';
+})();
+
+/* ===== Tabs ===== */
+function switchTab(evt, tabName) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  evt.target.closest('.tab').classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById(tabName + '-content').classList.add('active');
+  if (tabName === 'storage') loadStorageData();
+}
+
+/* ===== Helpers ===== */
+function formatBytes(b) {
+  if (!b) return '0 B';
+  const k = 1024;
+  const u = ['o', 'ko', 'Mo', 'Go'];
+  const i = Math.floor(Math.log(b) / Math.log(k));
+  return Math.round(b / Math.pow(k, i) * 100) / 100 + ' ' + u[i];
+}
+function formatUptime(ms) {
+  let s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600); s -= h * 3600;
+  const m = Math.floor(s / 60);   s -= m * 60;
+  return (h ? h + 'h ' : '') + (m < 10 ? '0' : '') + m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+}
+
+/* ===== Etat systeme ===== */
+function refreshStatus() {
+  fetch('/api/status').then(r => r.json()).then(d => {
+    document.getElementById('sys-mode').textContent  = d.mode || '—';
+    document.getElementById('sys-ssid').textContent  = d.ssid || '—';
+    document.getElementById('sys-ip').textContent    = d.ip || '—';
+    document.getElementById('sys-rssi').textContent  = (typeof d.rssi === 'number' && d.mode === 'STA')
+                                                       ? d.rssi + ' dBm' : '—';
+    document.getElementById('sys-uptime').textContent= formatUptime(d.uptime_ms || 0);
+    document.getElementById('sys-heap').textContent  = formatBytes(d.heap_free || 0);
+    document.getElementById('sys-sketch').textContent= d.sketch || '—';
+    if (typeof d.fs_total === 'number') {
+      document.getElementById('storage-total').textContent = formatBytes(d.fs_total);
+      document.getElementById('storage-used').textContent  = formatBytes(d.fs_used);
+    }
+  }).catch(() => {});
+}
+refreshStatus();
+setInterval(refreshStatus, 5000);
+
+/* ===== Wi-Fi ===== */
+let scanTimer = null;
+function scanWifi() {
+  const list = document.getElementById('wifi-list');
+  list.innerHTML = '<div class="loading-spinner">Recherche en cours...</div>';
+  fetch('/api/wifi/scan').then(r => r.json()).then(d => {
+    if (d.status === 'scanning') {
+      clearTimeout(scanTimer);
+      scanTimer = setTimeout(scanWifi, 1500);
+      return;
+    }
+    if (!d.networks || !d.networks.length) {
+      list.innerHTML = '<div class="empty-state">Aucun reseau detecte.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    d.networks.sort((a, b) => b.rssi - a.rssi).forEach(n => {
+      const it = document.createElement('div');
+      it.className = 'wifi-item';
+      it.innerHTML = `
+        <div class="wifi-item-left">
+          <span class="wifi-secure-icon">${n.secured ? '🔒' : '📶'}</span>
+          <span>${n.ssid || '(SSID masque)'}</span>
+        </div>
+        <span class="wifi-signal">${n.rssi} dBm</span>
+      `;
+      it.addEventListener('click', () => {
+        document.getElementById('wifi-ssid').value = n.ssid;
+        document.getElementById('wifi-pwd').focus();
+      });
+      list.appendChild(it);
+    });
+  }).catch(() => {
+    list.innerHTML = '<div class="empty-state">Erreur de scan.</div>';
+  });
+}
+
+document.getElementById('wifi-save-btn').addEventListener('click', () => {
+  const ssid = document.getElementById('wifi-ssid').value.trim();
+  const pwd  = document.getElementById('wifi-pwd').value;
+  if (!ssid) { alert('Le SSID est obligatoire.'); return; }
+  if (!confirm("L'ESP32 va se redemarrer pour appliquer la nouvelle configuration. Continuer ?")) return;
+
+  fetch('/api/wifi', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ssid: ssid, password: pwd })
+  }).then(r => r.json()).then(d => {
+    alert(d.msg || 'Configuration enregistree, redemarrage...');
+  }).catch(() => alert('Erreur lors de la sauvegarde.'));
+});
+
+/* ===== Upload fichier ===== */
+const uIn   = document.getElementById('upload-file');
+const uLbl  = document.getElementById('upload-label');
+const uName = document.getElementById('upload-filename');
+const uBtn  = document.getElementById('upload-btn');
+const uFrm  = document.getElementById('upload-form');
+const uPC   = document.getElementById('upload-progress-container');
+const uPF   = document.getElementById('upload-progress');
+
+uIn.addEventListener('change', function() {
+  if (this.files && this.files[0]) {
+    uLbl.classList.add('has-file');
+    uName.textContent = '📄 ' + this.files[0].name;
+    uBtn.disabled = false;
+  } else {
+    uLbl.classList.remove('has-file');
+    uName.textContent = '';
+    uBtn.disabled = true;
+  }
+});
+
+uFrm.addEventListener('submit', function(e) {
+  e.preventDefault();
+  const f = uIn.files[0];
+  if (!f) return;
+  const fd = new FormData();
+  fd.append('filename', f);
+
+  uBtn.disabled = true;
+  uPC.classList.add('active');
+  uPF.style.width = '0%'; uPF.textContent = '0%';
+  uPF.classList.remove('complete');
+
+  const xhr = new XMLHttpRequest();
+  xhr.upload.addEventListener('progress', e => {
+    if (!e.lengthComputable) return;
+    const p = Math.round(e.loaded / e.total * 100);
+    uPF.style.width = p + '%'; uPF.textContent = p + '%';
+    if (p === 100) { uPF.classList.add('complete'); uPF.textContent = '✓ Upload termine'; }
+  });
+  xhr.addEventListener('load', () => {
+    if (xhr.status === 200) {
+      setTimeout(() => {
+        uBtn.disabled = true;
+        uPC.classList.remove('active');
+        uIn.value = '';
+        uLbl.classList.remove('has-file');
+        uName.textContent = '';
+        if (document.getElementById('storage-content').classList.contains('active')) {
+          loadStorageData();
+        }
+      }, 2000);
+    }
+  });
+  xhr.open('POST', '/api/upload');
+  xhr.send(fd);
+});
+
+/* ===== Firmware ===== */
+const fIn   = document.getElementById('firmware-file');
+const fLbl  = document.getElementById('firmware-label');
+const fName = document.getElementById('firmware-filename');
+const fBtn  = document.getElementById('firmware-btn');
+const fFrm  = document.getElementById('firmware-form');
+const fPC   = document.getElementById('firmware-progress-container');
+const fPF   = document.getElementById('firmware-progress');
+
+fIn.addEventListener('change', function() {
+  if (this.files && this.files[0]) {
+    fLbl.classList.add('has-file');
+    fName.textContent = '📄 ' + this.files[0].name;
+    fBtn.disabled = false;
+  } else {
+    fLbl.classList.remove('has-file');
+    fName.textContent = '';
+    fBtn.disabled = true;
+  }
+});
+
+fFrm.addEventListener('submit', function(e) {
+  e.preventDefault();
+  const f = fIn.files[0];
+  if (!f) return;
+  if (!confirm("L'ESP32 va redemarrer apres la mise a jour. Continuer ?")) return;
+
+  const fd = new FormData();
+  fd.append('update', f);
+
+  fBtn.disabled = true;
+  fPC.classList.add('active');
+  fPF.style.width = '0%'; fPF.textContent = '0%';
+  fPF.classList.remove('complete');
+
+  const xhr = new XMLHttpRequest();
+  xhr.upload.addEventListener('progress', e => {
+    if (!e.lengthComputable) return;
+    const p = Math.round(e.loaded / e.total * 100);
+    fPF.style.width = p + '%'; fPF.textContent = p + '%';
+    if (p === 100) { fPF.classList.add('complete'); fPF.textContent = '✓ Mise a jour terminee'; }
+  });
+  xhr.addEventListener('load', () => {
+    if (xhr.status === 200) {
+      setTimeout(() => {
+        fBtn.disabled = true;
+        fPC.classList.remove('active');
+        fIn.value = '';
+        fLbl.classList.remove('has-file');
+        fName.textContent = '';
+      }, 6000);
+    }
+  });
+  xhr.open('POST', '/api/firmware');
+  xhr.send(fd);
+});
+
+/* ===== Stockage ===== */
+function loadStorageData() {
+  const c = document.getElementById('files-container');
+  c.innerHTML = '<div class="loading-spinner">Chargement...</div>';
+
+  fetch('/api/files').then(r => r.json()).then(d => {
+    document.getElementById('storage-total').textContent = formatBytes(d.total);
+    document.getElementById('storage-used').textContent  = formatBytes(d.used);
+    document.getElementById('storage-count').textContent = d.files.length;
+    document.getElementById('storage-progress-fill').style.width = (d.used / d.total * 100).toFixed(1) + '%';
+
+    if (!d.files.length) {
+      c.innerHTML = `
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          <div>Aucun fichier sur la flash</div>
+        </div>`;
+      return;
+    }
+    c.innerHTML = '';
+    d.files.forEach(file => {
+      const it = document.createElement('div');
+      it.className = 'file-item';
+      it.innerHTML = `
+        <div class="file-info">
+          <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+            <path d="M13 2v7h7"/>
+          </svg>
+          <div class="file-details">
+            <div class="file-name-text">${file.name}</div>
+            <div class="file-size">${formatBytes(file.size)}</div>
+          </div>
+        </div>
+        <div class="file-actions">
+          <button class="btn btn-danger" onclick="deleteFile('${file.name}')">
+            <svg style="width:16px;height:16px;vertical-align:middle;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
+              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            Supprimer
+          </button>
+        </div>`;
+      c.appendChild(it);
+    });
+  }).catch(() => {
+    c.innerHTML = '<div class="empty-state">Erreur lors du chargement.</div>';
+  });
+}
+
+function deleteFile(name) {
+  if (!confirm(`Supprimer "${name}" ?`)) return;
+  const fd = new FormData();
+  fd.append('file', name);
+  fetch('/api/delete', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) loadStorageData();
+      else alert('Echec de la suppression.');
+    });
+}
+</script>
+</body>
+</html>

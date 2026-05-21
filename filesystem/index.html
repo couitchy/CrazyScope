@@ -1,0 +1,1381 @@
+<!DOCTYPE HTML>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<script>
+  (function(){
+    const t = localStorage.getItem('cscope-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<title>Crazy Scope</title>
+<style>
+*,*::before,*::after { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --bg-primary:    #ffffff;
+  --bg-secondary:  #f5f7fa;
+  --text-primary:  #2c3e50;
+  --text-secondary:#7f8c8d;
+  --border-color:  #e1e8ed;
+  --card-shadow:   0 2px 8px rgba(0,0,0,.10);
+  --accent:        #3498db;
+  --accent-hover:  #2980b9;
+  --danger:        #e74c3c;
+  --success:       #2ecc71;
+  --warning:       #f39c12;
+  --scope-bg:      #0b0f1a;
+  --scope-grid:    rgba(255,255,255,0.08);
+  --scope-grid-mid:rgba(255,255,255,0.15);
+  --scope-axis:    rgba(255,255,255,0.30);
+  --scope-text:    #95a5a6;
+  --ch1-color:     #2ecc71;
+  --ch2-color:     #f39c12;
+}
+
+[data-theme="dark"] {
+  --bg-primary:    #1a1a2e;
+  --bg-secondary:  #16213e;
+  --text-primary:  #eeeeee;
+  --text-secondary:#95a5a6;
+  --border-color:  #2c3e50;
+  --card-shadow:   0 2px 8px rgba(0,0,0,.30);
+  --accent:        #3498db;
+  --accent-hover:  #5dade2;
+  --danger:        #e74c3c;
+  --success:       #2ecc71;
+  --warning:       #f39c12;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background .3s, color .3s;
+  padding: 20px;
+  min-height: 100vh;
+}
+
+.container { max-width: 1280px; margin: 0 auto; }
+
+/* ----------------- Header --------------------------------------------- */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.header-left  { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.header-right { display: flex; align-items: center; gap: 8px; }
+
+h1 { font-size: 1.8em; font-weight: 600; }
+h1 .accent { color: var(--accent); }
+
+.status-badge {
+  font-size: .78em;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: rgba(46,204,113,.15);
+  color: var(--success);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.status-badge.disconnected { background: rgba(231,76,60,.15); color: var(--danger); }
+.status-badge .dot {
+  width:8px; height:8px; border-radius:50%;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.icon-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 25px;
+  padding: 8px 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: .9em;
+  text-decoration: none;
+  transition: transform .2s, background .2s;
+}
+.icon-btn:hover { transform: scale(1.05); }
+.icon-btn .icon { font-size: 18px; }
+
+/* ----------------- Ecran oscilloscope --------------------------------- */
+.scope {
+  position: relative;
+  background: var(--scope-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+  height: 480px;
+  margin-bottom: 16px;
+}
+#scope-canvas { display: block; width: 100%; height: 100%; }
+
+.scope-overlay {
+  position: absolute;
+  top: 10px; left: 12px;
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: .78em;
+  color: var(--scope-text);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.scope-overlay .ovl-line {
+  background: rgba(0,0,0,0.35);
+  padding: 2px 8px;
+  border-radius: 4px;
+  backdrop-filter: blur(2px);
+}
+
+.scope-overlay-right {
+  position: absolute;
+  top: 10px; right: 12px;
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: .78em;
+  color: var(--scope-text);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.scope-overlay-right .ovl-line {
+  background: rgba(0,0,0,0.35);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.scope-paused {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.4);
+  font-size: 1.5em;
+  font-weight: 600;
+  letter-spacing: 4px;
+  color: var(--warning);
+  pointer-events: none;
+}
+.scope.paused .scope-paused { display: flex; }
+
+/* ----------------- Mesures auto --------------------------------------- */
+.measurements {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 720px) {
+  .measurements { grid-template-columns: 1fr; }
+}
+.meas-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 12px 16px;
+  box-shadow: var(--card-shadow);
+}
+.meas-card.disabled { opacity: 0.35; }
+.meas-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.meas-title {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 600; font-size: .92em;
+}
+.meas-title .chip {
+  width:14px; height:14px; border-radius:3px;
+}
+.meas-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+@media (max-width: 540px) {
+  .meas-grid { grid-template-columns: repeat(2, 1fr); }
+}
+.meas-item {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.meas-label {
+  font-size: .68em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.meas-value {
+  font-size: 1.05em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----------------- Cards de controle ---------------------------------- */
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.ctrl-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: var(--card-shadow);
+}
+.ctrl-title {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+  font-weight: 600; font-size: .95em;
+}
+.ctrl-title-left { display: flex; align-items: center; gap: 8px; }
+.ctrl-title .chip {
+  width:14px; height:14px; border-radius:3px;
+}
+
+.ctrl-row {
+  display: flex; flex-direction: column; gap: 4px;
+  margin-bottom: 10px;
+}
+.ctrl-row:last-child { margin-bottom: 0; }
+.ctrl-label {
+  display: flex; justify-content: space-between;
+  font-size: .76em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.ctrl-label .val {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px; height: 16px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--bg-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--bg-primary);
+}
+
+select, .btn {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-family: inherit;
+  font-size: .88em;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+select:focus { outline: none; border-color: var(--accent); }
+.btn {
+  font-weight: 600;
+}
+.btn:hover { background: var(--border-color); }
+.btn.primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+.btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.danger {
+  background: var(--danger);
+  color: white;
+  border-color: var(--danger);
+}
+
+.btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn-group .btn { flex: 1; min-width: 60px; }
+.btn-group .btn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+/* Switch ON/OFF */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px; height: 24px;
+}
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: var(--border-color);
+  border-radius: 24px;
+  transition: background .2s;
+}
+.switch-slider::before {
+  content: '';
+  position: absolute;
+  width: 18px; height: 18px;
+  left: 3px; top: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform .2s;
+}
+.switch input:checked + .switch-slider { background: var(--ch-color, var(--accent)); }
+.switch input:checked + .switch-slider::before { transform: translateX(20px); }
+
+/* Mode badge en bas de l'ecran oscillo */
+.ack {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: .72em;
+  color: var(--scope-text);
+  pointer-events: none;
+  background: rgba(0,0,0,0.35);
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ===== Header ===== -->
+  <header>
+    <div class="header-left">
+      <h1>Crazy <span class="accent">Scope</span></h1>
+      <div class="status-badge disconnected" id="status">
+        <span class="dot"></span><span id="status-text">Connexion...</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <a class="icon-btn" href="/admin.html" title="Administration">
+        <span class="icon">⚙️</span><span>Admin</span>
+      </a>
+      <button class="icon-btn" onclick="toggleTheme()" title="Theme">
+        <span class="icon" id="theme-icon">🌙</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== Ecran oscilloscope ===== -->
+  <div class="scope" id="scope">
+    <canvas id="scope-canvas"></canvas>
+    <div class="scope-overlay">
+      <div class="ovl-line" id="ovl-rate">— frames/s</div>
+      <div class="ovl-line" id="ovl-acq">—</div>
+      <div class="ovl-line" id="ovl-debug-ch1" style="color:var(--ch1-color)">CH1 —</div>
+      <div class="ovl-line" id="ovl-debug-ch2" style="color:var(--ch2-color)">CH2 —</div>
+    </div>
+    <div class="scope-overlay-right">
+      <div class="ovl-line" id="ovl-trig">Trig : Auto</div>
+    </div>
+    <div class="scope-paused">⏸ PAUSE</div>
+    <div class="ack" id="ack-line">en attente de donnees...</div>
+  </div>
+
+  <!-- ===== Mesures auto ===== -->
+  <div class="measurements">
+    <div class="meas-card" id="meas-ch1">
+      <div class="meas-header">
+        <div class="meas-title"><span class="chip" style="background:var(--ch1-color)"></span>CH1</div>
+      </div>
+      <div class="meas-grid">
+        <div class="meas-item"><div class="meas-label">Vpp</div><div class="meas-value" id="ch1-vpp">— V</div></div>
+        <div class="meas-item"><div class="meas-label">V moy</div><div class="meas-value" id="ch1-vmean">— V</div></div>
+        <div class="meas-item"><div class="meas-label">Vrms</div><div class="meas-value" id="ch1-vrms">— V</div></div>
+        <div class="meas-item"><div class="meas-label">Freq</div><div class="meas-value" id="ch1-freq">— Hz</div></div>
+      </div>
+    </div>
+    <div class="meas-card" id="meas-ch2">
+      <div class="meas-header">
+        <div class="meas-title"><span class="chip" style="background:var(--ch2-color)"></span>CH2</div>
+      </div>
+      <div class="meas-grid">
+        <div class="meas-item"><div class="meas-label">Vpp</div><div class="meas-value" id="ch2-vpp">— V</div></div>
+        <div class="meas-item"><div class="meas-label">V moy</div><div class="meas-value" id="ch2-vmean">— V</div></div>
+        <div class="meas-item"><div class="meas-label">Vrms</div><div class="meas-value" id="ch2-vrms">— V</div></div>
+        <div class="meas-item"><div class="meas-label">Freq</div><div class="meas-value" id="ch2-freq">— Hz</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Contrôles ===== -->
+  <div class="controls">
+
+    <!-- Carte ACQUISITION -->
+    <div class="ctrl-card">
+      <div class="ctrl-title">
+        <div class="ctrl-title-left">Acquisition</div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Mode <span class="val" id="acq-info">—</span></div>
+        <select id="quality"></select>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Profondeur <span class="val" id="spf-val">256 pts</span></div>
+        <div style="font-size:.72em;color:var(--text-secondary)">Pilotée par la base de temps</div>
+      </div>
+      <div class="ctrl-row">
+        <div class="btn-group">
+          <button class="btn primary" id="btn-run">▶ RUN</button>
+          <button class="btn" id="btn-single">▷ Single</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Carte CH1 -->
+    <div class="ctrl-card" style="--ch-color: var(--ch1-color)">
+      <div class="ctrl-title">
+        <div class="ctrl-title-left">
+          <span class="chip" style="background:var(--ch1-color)"></span>CH1 (GPIO34)
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="ch1-en" checked>
+          <span class="switch-slider"></span>
+        </label>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">V / div <span class="val" id="ch1-vdiv-val">5 V</span></div>
+        <input type="range" id="ch1-vdiv" min="0" max="7" value="3" step="1">
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Offset <span class="val" id="ch1-off-val">0,00 V</span></div>
+        <input type="range" id="ch1-off" min="-20" max="20" value="0" step="0.5">
+      </div>
+    </div>
+
+    <!-- Carte CH2 -->
+    <div class="ctrl-card" style="--ch-color: var(--ch2-color)">
+      <div class="ctrl-title">
+        <div class="ctrl-title-left">
+          <span class="chip" style="background:var(--ch2-color)"></span>CH2 (GPIO35)
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="ch2-en" checked>
+          <span class="switch-slider"></span>
+        </label>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">V / div <span class="val" id="ch2-vdiv-val">5 V</span></div>
+        <input type="range" id="ch2-vdiv" min="0" max="7" value="3" step="1">
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Offset <span class="val" id="ch2-off-val">0,00 V</span></div>
+        <input type="range" id="ch2-off" min="-20" max="20" value="0" step="0.5">
+      </div>
+    </div>
+
+    <!-- Carte BASE DE TEMPS -->
+    <div class="ctrl-card">
+      <div class="ctrl-title">
+        <div class="ctrl-title-left">Base de temps</div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Temps / div <span class="val" id="tdiv-val">— ms</span></div>
+        <input type="range" id="tdiv" min="0" max="0" value="0" step="1">
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Position H <span class="val" id="hpos-val">0 %</span></div>
+        <input type="range" id="hpos" min="-50" max="50" value="0" step="1">
+      </div>
+    </div>
+
+    <!-- Carte TRIGGER -->
+    <div class="ctrl-card">
+      <div class="ctrl-title">
+        <div class="ctrl-title-left">Trigger</div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Mode</div>
+        <div class="btn-group" id="trig-mode">
+          <button class="btn active" data-v="auto">Auto</button>
+          <button class="btn" data-v="normal">Normal</button>
+          <button class="btn" data-v="none">Free</button>
+        </div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Source</div>
+        <div class="btn-group" id="trig-src">
+          <button class="btn active" data-v="1">CH1</button>
+          <button class="btn" data-v="2">CH2</button>
+        </div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Front</div>
+        <div class="btn-group" id="trig-edge">
+          <button class="btn active" data-v="rising">↑ Montant</button>
+          <button class="btn" data-v="falling">↓ Descendant</button>
+        </div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Niveau <span class="val" id="trig-lvl-val">0,00 V</span></div>
+        <input type="range" id="trig-lvl" min="-20" max="20" value="0" step="0.1">
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* =====================================================================
+   Constantes du front-end calees sur l'etage analogique :
+   pont 90k/10k + offset 1.65V  ->  Vin = (Vadc - 1.5631) / 0.0526
+   ----------------------------------------------------------------------
+   IMPORTANT : depuis la calibration ADC cote firmware, les samples
+   recus sont DEJA en millivolts (corriges via eFuses) et non plus
+   en valeurs raw 0..4095.
+   ===================================================================== */
+const GAIN        = 0.05263;    // pente Vadc / Vin (etage analogique)
+const OFFSET      = 1.5631;     // Vadc lorsque Vin = 0
+
+function adcToVoltage(mv) {
+  // mv : tension a la broche ADC en millivolts (calibree eFuse)
+  // retourne V_in reelle apres conversion par l'etage analogique
+  const vadc = mv / 1000;
+  return (vadc - OFFSET) / GAIN;
+}
+
+/* =====================================================================
+   Echelles standardisees type oscillo (sequence 1-2-5)
+   ----------------------------------------------------------------------
+   Principe : la base de temps pilote la PROFONDEUR d'acquisition.
+   Pour un tdiv donne, on affiche 10 divisions = 10 * tdiv secondes,
+   ce qui correspond a (10 * tdiv * fs) samples. On etale ensuite tout
+   ce buffer sur la largeur de l'ecran.
+   ===================================================================== */
+const VDIV_STEPS = [0.5, 1, 2, 5, 10, 20, 50, 100]; // V/div
+const MIN_SAMPLES = 128;
+const MAX_SAMPLES = 1024;   // doit matcher MAX_SAMPLES_PER_FRAME du firmware
+let TDIV_STEPS = []; // calcules dynamiquement selon Fs
+
+function buildTimebaseSteps(fs_hz) {
+  // tdiv tel que le buffer total (10 divisions) reste dans la plage
+  // [MIN_SAMPLES, MAX_SAMPLES] de samples acquis.
+  const minDiv = (MIN_SAMPLES / fs_hz) / 10;
+  const maxDiv = (MAX_SAMPLES / fs_hz) / 10;
+  const steps = [];
+  let e = Math.floor(Math.log10(minDiv)) - 1;
+  for (let i = 0; i < 40; i++) {
+    for (const m of [1, 2, 5]) {
+      const v = m * Math.pow(10, e);
+      if (v >= minDiv * 0.999 && v <= maxDiv * 1.001) steps.push(v);
+    }
+    e++;
+  }
+  return steps.length ? steps : [maxDiv];
+}
+
+// Convertit un tdiv (s/div) en nombre de samples a demander au firmware
+function tdivToSamples(tdiv, fs_hz) {
+  let n = Math.round(tdiv * 10 * fs_hz);
+  n = Math.max(MIN_SAMPLES, Math.min(MAX_SAMPLES, n));
+  return n;
+}
+
+function fmtSeconds(s) {
+  if (s >= 1)        return s.toFixed(2) + ' s';
+  if (s >= 1e-3)     return (s*1e3).toFixed(2) + ' ms';
+  if (s >= 1e-6)     return (s*1e6).toFixed(1) + ' µs';
+  return (s*1e9).toFixed(0) + ' ns';
+}
+function fmtHz(f) {
+  if (!isFinite(f) || f <= 0) return '— Hz';
+  if (f >= 1e6) return (f/1e6).toFixed(2) + ' MHz';
+  if (f >= 1e3) return (f/1e3).toFixed(2) + ' kHz';
+  return f.toFixed(1) + ' Hz';
+}
+function fmtV(v, prec = 2) {
+  if (!isFinite(v)) return '— V';
+  if (Math.abs(v) >= 10) return v.toFixed(prec > 1 ? 1 : prec) + ' V';
+  return v.toFixed(prec) + ' V';
+}
+function fmtVdiv(v) {
+  return v < 1 ? (v*1000).toFixed(0) + ' mV' : v.toFixed(0) + ' V';
+}
+
+/* =====================================================================
+   Etat applicatif
+   ===================================================================== */
+const state = {
+  ch1: { enabled: true,  vdiv_idx: 3, offset: 0, samples: null },
+  ch2: { enabled: true,  vdiv_idx: 3, offset: 0, samples: null },
+  tdiv_idx: 99,      // sera clampe au max (= base de temps la plus large)
+  hpos: 0,           // -50..50 %
+  trig: { mode: 'auto', source: 1, edge: 'rising', level: 0 },
+  quality_idx: 0,
+  spf: 256,
+  presets: [],
+  running: true,
+  singleShot: false,
+  fs_effective: 100000,
+  oversampling: 4,
+  frameStats: { fps: 0, lastFrameTs: 0 }
+};
+
+/* =====================================================================
+   WebSocket
+   ===================================================================== */
+let ws = null;
+let wsReconnectTimer = null;
+
+function wsConnect() {
+  const url = (location.protocol === 'https:' ? 'wss://' : 'ws://')
+            + location.host + '/ws';
+  console.log('[WS] tentative de connexion', url);
+  ws = new WebSocket(url);
+  ws.binaryType = 'arraybuffer';
+
+  ws.addEventListener('open', () => {
+    console.log('[WS] OPEN', new Date().toLocaleTimeString());
+    setStatus(true, 'Connecte');
+  });
+  ws.addEventListener('close', (e) => {
+    console.warn('[WS] CLOSE',
+                 'code=' + e.code,
+                 'reason=' + (e.reason || '(vide)'),
+                 'wasClean=' + e.wasClean);
+    setStatus(false, 'Deconnecte (code ' + e.code + ')');
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = setTimeout(wsConnect, 1500);
+  });
+  ws.addEventListener('error', (e) => {
+    console.error('[WS] ERROR', e);
+    try { ws.close(); } catch(e2){}
+  });
+
+  ws.addEventListener('message', (e) => {
+    if (typeof e.data === 'string') {
+      try { handleJsonMessage(JSON.parse(e.data)); }
+      catch(err) { console.error('[WS] JSON parse error', err, e.data); }
+    } else {
+      handleBinaryFrame(e.data);
+    }
+  });
+}
+
+function wsSend(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+function setStatus(ok, text) {
+  const el = document.getElementById('status');
+  const txt = document.getElementById('status-text');
+  txt.textContent = text;
+  el.classList.toggle('disconnected', !ok);
+}
+
+/* =====================================================================
+   Messages
+   ===================================================================== */
+function handleJsonMessage(d) {
+  if (d.type === 'hello') {
+    state.presets = d.presets || [];
+    state.quality_idx = d.quality_idx ?? 0;
+    state.ch1.enabled = d.ch1_enabled ?? true;
+    state.ch2.enabled = d.ch2_enabled ?? true;
+    state.spf         = d.samples_per_frame ?? 256;
+    fillQualitySelect();
+    document.getElementById('ch1-en').checked = state.ch1.enabled;
+    document.getElementById('ch2-en').checked = state.ch2.enabled;
+    document.getElementById('quality').value  = state.quality_idx;
+    document.getElementById('spf-val').textContent = state.spf + ' pts';
+    if (d.ui_state) applyUiState(d.ui_state);
+    refreshUiAfterConfig();
+  }
+}
+
+function handleBinaryFrame(buf) {
+  if (!state.running && !state.singleShot) return;
+
+  const view = new DataView(buf);
+  const version = view.getUint8(0);
+  if (version !== 1) return;
+  const flags   = view.getUint8(1);
+  const N       = view.getUint16(2, true);
+  const fs      = view.getUint32(4, true);
+  const os      = view.getUint8(8);
+
+  state.fs_effective = fs;
+  state.oversampling = os;
+
+  let off = 12;
+  state.ch1.samples = null;
+  state.ch2.samples = null;
+  if (flags & 1) {
+    state.ch1.samples = new Uint16Array(buf, off, N);
+    off += N * 2;
+  }
+  if (flags & 2) {
+    state.ch2.samples = new Uint16Array(buf, off, N);
+  }
+
+  // FPS (cadence trames recues, pas frequence de redraw)
+  const now = performance.now();
+  if (state.frameStats.lastFrameTs > 0) {
+    const dt = (now - state.frameStats.lastFrameTs) / 1000;
+    if (dt > 0) {
+      const inst = 1 / dt;
+      state.frameStats.fps = state.frameStats.fps
+        ? state.frameStats.fps * 0.85 + inst * 0.15
+        : inst;
+    }
+  }
+  state.frameStats.lastFrameTs = now;
+
+  // Si on est en Single, on stoppe apres la 1ere trame
+  if (state.singleShot) {
+    state.singleShot = false;
+    state.running = false;
+    updateRunBtn();
+  }
+
+  // Redraw via rAF pour ne pas geler le navigateur si le rate est eleve
+  scheduleDraw(N);
+}
+
+let pendingDraw = false;
+let lastDrawN = 0;
+function scheduleDraw(N) {
+  lastDrawN = N;
+  if (pendingDraw) return;
+  pendingDraw = true;
+  requestAnimationFrame(() => {
+    pendingDraw = false;
+    updateMeasurements();
+    draw();
+    updateOverlays(lastDrawN);
+  });
+}
+
+/* =====================================================================
+   Mesures auto (Vpp, Vmean, Vrms, Freq)
+   ===================================================================== */
+function computeMeasurements(samples, fs) {
+  if (!samples || samples.length < 2) return null;
+  let min = Infinity, max = -Infinity, sum = 0, sum2 = 0;
+  const N = samples.length;
+  // Conversion + stats
+  const volts = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const v = adcToVoltage(samples[i]);
+    volts[i] = v;
+    if (v < min) min = v;
+    if (v > max) max = v;
+    sum += v;
+    sum2 += v * v;
+  }
+  const mean = sum / N;
+  const rms  = Math.sqrt(sum2 / N);
+
+  // Frequence : passages a zero (centre sur la moyenne) montants
+  let crossings = 0;
+  let firstCross = -1, lastCross = -1;
+  for (let i = 1; i < N; i++) {
+    if (volts[i-1] <= mean && volts[i] > mean) {
+      if (firstCross < 0) firstCross = i;
+      lastCross = i;
+      crossings++;
+    }
+  }
+  let freq = NaN;
+  if (crossings >= 2 && firstCross >= 0 && lastCross > firstCross) {
+    const periods = crossings - 1;
+    const dn = lastCross - firstCross;
+    const T = dn / fs / periods;
+    if (T > 0) freq = 1 / T;
+  }
+  return { min, max, vpp: max - min, mean, rms, freq };
+}
+
+function updateMeasurements() {
+  // Si une voie est desactivee cote UI, on n'affiche aucune mesure pour elle,
+  // meme si on a encore des samples residuels en buffer.
+  const m1 = state.ch1.enabled
+    ? computeMeasurements(state.ch1.samples, state.fs_effective)
+    : null;
+  const m2 = state.ch2.enabled
+    ? computeMeasurements(state.ch2.samples, state.fs_effective)
+    : null;
+  setMeas('ch1', m1, state.ch1.enabled);
+  setMeas('ch2', m2, state.ch2.enabled);
+}
+function setMeas(id, m, enabled) {
+  const card = document.getElementById('meas-'+id);
+  card.classList.toggle('disabled', !enabled);
+  if (!m) {
+    document.getElementById(id+'-vpp').textContent   = '— V';
+    document.getElementById(id+'-vmean').textContent = '— V';
+    document.getElementById(id+'-vrms').textContent  = '— V';
+    document.getElementById(id+'-freq').textContent  = '— Hz';
+    return;
+  }
+  document.getElementById(id+'-vpp').textContent   = fmtV(m.vpp);
+  document.getElementById(id+'-vmean').textContent = fmtV(m.mean);
+  document.getElementById(id+'-vrms').textContent  = fmtV(m.rms);
+  document.getElementById(id+'-freq').textContent  = fmtHz(m.freq);
+}
+
+/* =====================================================================
+   Rendu canvas
+   ===================================================================== */
+const canvas = document.getElementById('scope-canvas');
+const ctx    = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = Math.floor(rect.width  * dpr);
+  canvas.height = Math.floor(rect.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+function drawGrid(w, h) {
+  ctx.fillStyle = getCss('--scope-bg');
+  ctx.fillRect(0, 0, w, h);
+
+  // 10 divisions horizontales, 8 verticales (standard oscillo)
+  const NX = 10, NY = 8;
+  ctx.strokeStyle = getCss('--scope-grid');
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 1; i < NX; i++) {
+    const x = i * w / NX;
+    ctx.moveTo(x, 0); ctx.lineTo(x, h);
+  }
+  for (let j = 1; j < NY; j++) {
+    const y = j * h / NY;
+    ctx.moveTo(0, y); ctx.lineTo(w, y);
+  }
+  ctx.stroke();
+
+  // Petits ticks tous les 1/5 de div, sur les axes centraux
+  ctx.strokeStyle = getCss('--scope-grid-mid');
+  ctx.beginPath();
+  const cx = w / 2, cy = h / 2;
+  const ticksX = NX * 5, ticksY = NY * 5;
+  for (let i = 1; i < ticksX; i++) {
+    const x = i * w / ticksX;
+    ctx.moveTo(x, cy - 4); ctx.lineTo(x, cy + 4);
+  }
+  for (let j = 1; j < ticksY; j++) {
+    const y = j * h / ticksY;
+    ctx.moveTo(cx - 4, y); ctx.lineTo(cx + 4, y);
+  }
+  ctx.stroke();
+
+  // Axes centraux plus marques
+  ctx.strokeStyle = getCss('--scope-axis');
+  ctx.beginPath();
+  ctx.moveTo(0, cy); ctx.lineTo(w, cy);
+  ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
+  ctx.stroke();
+}
+
+function getCss(varName) {
+  return getComputedStyle(document.documentElement)
+           .getPropertyValue(varName).trim();
+}
+
+/**
+ * Recherche d'un trigger logiciel.
+ * Retourne l'index du sample correspondant au front declencheur, ou
+ * -1 si introuvable.
+ */
+function findTrigger(samples, levelV, edge) {
+  if (!samples) return -1;
+  // levelV (V_in souhaite) -> niveau en mV a la broche ADC
+  const mvRef = (levelV * GAIN + OFFSET) * 1000;
+  const N = samples.length;
+  for (let i = 1; i < N; i++) {
+    if (edge === 'rising'  && samples[i-1] <= mvRef && samples[i] > mvRef)
+      return i;
+    if (edge === 'falling' && samples[i-1] >= mvRef && samples[i] < mvRef)
+      return i;
+  }
+  return -1;
+}
+
+function draw() {
+  const rect = canvas.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+  drawGrid(W, H);
+
+  // Nombre de samples reellement recus (peut differer de state.spf
+  // pendant une transition de base de temps)
+  let N = 0;
+  if (state.ch1.samples) N = state.ch1.samples.length;
+  else if (state.ch2.samples) N = state.ch2.samples.length;
+  if (N < 2) { drawTraceLabels(W, H); return; }
+
+  // Recherche du trigger pour aligner la trace (stabilisation visuelle).
+  // shiftSamples = decalage applique pour amener le front trigger a la
+  // position voulue (hpos). En mode 'none', pas de decalage.
+  let trigIdx = -1;
+  if (state.trig.mode !== 'none') {
+    const src = state.trig.source === 1 ? state.ch1.samples : state.ch2.samples;
+    trigIdx = findTrigger(src, state.trig.level, state.trig.edge);
+    if (trigIdx < 0 && state.trig.mode === 'normal') {
+      // Normal sans front : on ne rafraichit pas la trace
+      drawTraceLabels(W, H);
+      return;
+    }
+  }
+
+  // On etale les N samples sur toute la largeur de l'ecran.
+  // pxPerSample : largeur d'un sample. Toute la profondeur acquise est
+  // visible (c'est ce qu'on veut : exploiter tous les carreaux).
+  const pxPerSample = W / (N - 1);
+
+  // Decalage horizontal : la position H (hpos %) decale la trace.
+  // Si trigger trouve, on aligne le front sur le centre + hpos.
+  let xShift = (state.hpos / 100) * W;
+  if (trigIdx >= 0) {
+    // amener le sample trigIdx a la position (0.5 + hpos/100) * W
+    const targetX = (0.5 + state.hpos / 100) * W;
+    xShift = targetX - trigIdx * pxPerSample;
+  }
+
+  function idxToX(i) { return i * pxPerSample + xShift; }
+
+  drawChannel(W, H, state.ch1, getCss('--ch1-color'), idxToX);
+  drawChannel(W, H, state.ch2, getCss('--ch2-color'), idxToX);
+
+  if (trigIdx >= 0) drawTriggerMarker(W, H, idxToX(trigIdx));
+  drawTraceLabels(W, H);
+}
+
+function drawChannel(W, H, ch, color, idxToX) {
+  if (!ch.enabled || !ch.samples) return;
+  const vdiv = VDIV_STEPS[ch.vdiv_idx];
+  const fullScaleV = vdiv * 4; // 4 div au dessus et 4 en dessous du centre
+  const yCenter = H / 2;
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.8;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+
+  const N = ch.samples.length;
+  let started = false;
+  for (let i = 0; i < N; i++) {
+    const v = adcToVoltage(ch.samples[i]) - ch.offset;
+    const y = yCenter - (v / fullScaleV) * (H / 2);
+    const x = idxToX(i);
+    if (x < -5 || x > W + 5) { started = false; continue; }
+    if (!started) { ctx.moveTo(x, y); started = true; }
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function drawTriggerMarker(W, H, x) {
+  ctx.fillStyle = getCss('--warning');
+  // Petite fleche orange en haut
+  ctx.beginPath();
+  ctx.moveTo(x, 0);
+  ctx.lineTo(x - 5, 8);
+  ctx.lineTo(x + 5, 8);
+  ctx.closePath();
+  ctx.fill();
+  // Trait fin vertical
+  ctx.strokeStyle = 'rgba(243,156,18,0.4)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(x, 0); ctx.lineTo(x, H);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Marqueur niveau trigger sur l'axe Y du canal source
+  const ch = state.trig.source === 1 ? state.ch1 : state.ch2;
+  const color = state.trig.source === 1 ? getCss('--ch1-color') : getCss('--ch2-color');
+  if (!ch.enabled) return;
+  const vdiv = VDIV_STEPS[ch.vdiv_idx];
+  const fullScaleV = vdiv * 4;
+  const y = H/2 - ((state.trig.level - ch.offset) / fullScaleV) * (H/2);
+  if (y > 0 && y < H) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(W, y);
+    ctx.lineTo(W - 8, y - 5);
+    ctx.lineTo(W - 8, y + 5);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawTraceLabels(W, H) {
+  // Indicateurs CH1/CH2 sur le bord gauche, au niveau de leur offset
+  if (state.ch1.enabled) drawOffsetMarker(0, H, state.ch1, getCss('--ch1-color'), 'CH1');
+  if (state.ch2.enabled) drawOffsetMarker(0, H, state.ch2, getCss('--ch2-color'), 'CH2');
+}
+function drawOffsetMarker(x, H, ch, color, label) {
+  const vdiv = VDIV_STEPS[ch.vdiv_idx];
+  const fullScaleV = vdiv * 4;
+  const y = H/2 - ((0 - ch.offset) / fullScaleV) * (H/2);
+  if (y < 0 || y > H) return;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + 10, y - 5);
+  ctx.lineTo(x + 10, y + 5);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/* =====================================================================
+   Overlays
+   ===================================================================== */
+function updateOverlays(N) {
+  document.getElementById('ovl-rate').textContent =
+      state.frameStats.fps.toFixed(1) + ' fps';
+  const preset = state.presets[state.quality_idx];
+  if (preset) {
+    document.getElementById('ovl-acq').textContent =
+        fmtHz(state.fs_effective) + ' · OS×' + state.oversampling +
+        ' · ' + N + ' pts';
+    document.getElementById('ack-line').textContent =
+        'Mode ' + preset.name + ' · ' + fmtHz(state.fs_effective) +
+        ' · ' + N + ' samples · OS×' + state.oversampling;
+  }
+  const tlbl = state.trig.mode === 'none'
+    ? 'Free run'
+    : 'Trig : ' + state.trig.mode.toUpperCase()
+      + ' · CH' + state.trig.source + ' '
+      + (state.trig.edge === 'rising' ? '↑' : '↓')
+      + ' ' + fmtV(state.trig.level);
+  document.getElementById('ovl-trig').textContent = tlbl;
+
+  // Debug overlay : valeurs ADC brutes (avant conversion par l'etage
+  // analogique). Permet de comparer directement avec un multimetre sur
+  // GPIO34/35 sans passer par la formule du pont diviseur.
+  document.getElementById('ovl-debug-ch1').textContent =
+    formatRawDebug('CH1', state.ch1.samples, state.ch1.enabled);
+  document.getElementById('ovl-debug-ch2').textContent =
+    formatRawDebug('CH2', state.ch2.samples, state.ch2.enabled);
+}
+
+function formatRawDebug(label, samples, enabled) {
+  if (!enabled || !samples || samples.length === 0) return label + ' —';
+  let mn = 65536, mx = 0, sum = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const v = samples[i];
+    if (v < mn) mn = v;
+    if (v > mx) mx = v;
+    sum += v;
+  }
+  const avg = sum / samples.length;
+  return label + ' avg=' + avg.toFixed(0) + ' mV' +
+         ' (V_ADC=' + (avg/1000).toFixed(3) + ' V)' +
+         ' [' + mn + '..' + mx + ' mV]';
+}
+
+/* =====================================================================
+   Config UI
+   ===================================================================== */
+function fillQualitySelect() {
+  const sel = document.getElementById('quality');
+  sel.innerHTML = '';
+  state.presets.forEach((p, i) => {
+    const o = document.createElement('option');
+    o.value = i;
+    const nbCh = (state.ch1.enabled ? 1 : 0) + (state.ch2.enabled ? 1 : 0);
+    const os = nbCh === 2 ? p.os_2ch : p.os_1ch;
+    o.textContent = p.name + ' (' + fmtHz(p.fs) + ' · OS×' + os + ')';
+    sel.appendChild(o);
+  });
+  sel.value = state.quality_idx;
+  updateAcqInfo();
+}
+function updateAcqInfo() {
+  const p = state.presets[state.quality_idx];
+  if (!p) return;
+  const nbCh = (state.ch1.enabled ? 1 : 0) + (state.ch2.enabled ? 1 : 0);
+  const os = nbCh === 2 ? p.os_2ch : p.os_1ch;
+  document.getElementById('acq-info').textContent =
+    fmtHz(p.fs) + ' · OS×' + os;
+}
+
+function refreshUiAfterConfig() {
+  const p = state.presets[state.quality_idx];
+  if (!p) return;
+  TDIV_STEPS = buildTimebaseSteps(p.fs);
+  const tdivInput = document.getElementById('tdiv');
+  tdivInput.min = 0;
+  tdivInput.max = Math.max(0, TDIV_STEPS.length - 1);
+  if (state.tdiv_idx >= TDIV_STEPS.length) state.tdiv_idx = TDIV_STEPS.length - 1;
+  tdivInput.value = state.tdiv_idx;
+  document.getElementById('tdiv-val').textContent = fmtSeconds(TDIV_STEPS[state.tdiv_idx]);
+  // Synchronise la profondeur d'acquisition avec la base de temps courante
+  syncSamplesToTimebase(false);
+  updateAcqInfo();
+  draw();
+}
+
+// Calcule le nombre de samples pour la base de temps courante et l'envoie
+// au firmware si necessaire. send=false pour ne pas spammer au boot.
+function syncSamplesToTimebase(send) {
+  const p = state.presets[state.quality_idx];
+  if (!p) return;
+  const tdiv = TDIV_STEPS[state.tdiv_idx];
+  if (!tdiv) return;
+  const newSpf = tdivToSamples(tdiv, p.fs);
+  if (newSpf !== state.spf) {
+    state.spf = newSpf;
+    document.getElementById('spf-val').textContent = state.spf + ' pts';
+    if (send) wsSend({ type: 'set_config', samples_per_frame: state.spf });
+  }
+}
+
+function applyUiState(ui) {
+  if (typeof ui.ch1_vdiv === 'number') state.ch1.vdiv_idx = ui.ch1_vdiv;
+  if (typeof ui.ch2_vdiv === 'number') state.ch2.vdiv_idx = ui.ch2_vdiv;
+  if (typeof ui.ch1_off  === 'number') state.ch1.offset   = ui.ch1_off;
+  if (typeof ui.ch2_off  === 'number') state.ch2.offset   = ui.ch2_off;
+  if (typeof ui.tdiv_idx === 'number') state.tdiv_idx     = ui.tdiv_idx;
+  if (typeof ui.hpos     === 'number') state.hpos         = ui.hpos;
+  if (ui.trig) Object.assign(state.trig, ui.trig);
+  // Reflect in UI
+  document.getElementById('ch1-vdiv').value = state.ch1.vdiv_idx;
+  document.getElementById('ch2-vdiv').value = state.ch2.vdiv_idx;
+  document.getElementById('ch1-off').value  = state.ch1.offset;
+  document.getElementById('ch2-off').value  = state.ch2.offset;
+  document.getElementById('hpos').value     = state.hpos;
+  document.getElementById('trig-lvl').value = state.trig.level;
+  document.getElementById('ch1-vdiv-val').textContent = fmtVdiv(VDIV_STEPS[state.ch1.vdiv_idx]);
+  document.getElementById('ch2-vdiv-val').textContent = fmtVdiv(VDIV_STEPS[state.ch2.vdiv_idx]);
+  document.getElementById('ch1-off-val').textContent  = fmtV(state.ch1.offset);
+  document.getElementById('ch2-off-val').textContent  = fmtV(state.ch2.offset);
+  document.getElementById('hpos-val').textContent     = state.hpos + ' %';
+  document.getElementById('trig-lvl-val').textContent = fmtV(state.trig.level);
+  // Boutons
+  setActiveBtn('trig-mode', state.trig.mode);
+  setActiveBtn('trig-src',  String(state.trig.source));
+  setActiveBtn('trig-edge', state.trig.edge);
+}
+
+function persistUi() {
+  wsSend({
+    type: 'save_ui_state',
+    state: {
+      ch1_vdiv: state.ch1.vdiv_idx,
+      ch2_vdiv: state.ch2.vdiv_idx,
+      ch1_off:  state.ch1.offset,
+      ch2_off:  state.ch2.offset,
+      tdiv_idx: state.tdiv_idx,
+      hpos:     state.hpos,
+      trig:     state.trig
+    }
+  });
+}
+let persistTimer = null;
+function persistUiDebounced() {
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(persistUi, 500);
+}
+
+function setActiveBtn(groupId, value) {
+  const grp = document.getElementById(groupId);
+  grp.querySelectorAll('.btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.v === value);
+  });
+}
+
+/* =====================================================================
+   Bindings UI
+   ===================================================================== */
+function bindUI() {
+  // Quality
+  document.getElementById('quality').addEventListener('change', e => {
+    state.quality_idx = parseInt(e.target.value, 10);
+    wsSend({ type: 'set_config', quality_idx: state.quality_idx });
+    refreshUiAfterConfig();
+  });
+
+  // Run / Stop / Single
+  document.getElementById('btn-run').addEventListener('click', () => {
+    state.running = !state.running;
+    document.getElementById('scope').classList.toggle('paused', !state.running);
+    updateRunBtn();
+  });
+  document.getElementById('btn-single').addEventListener('click', () => {
+    state.singleShot = true;
+    state.running = true;
+    document.getElementById('scope').classList.remove('paused');
+    updateRunBtn();
+  });
+
+  // Channel enable
+  bindChEn('ch1-en', 'ch1', 'ch1_enabled');
+  bindChEn('ch2-en', 'ch2', 'ch2_enabled');
+
+  // V/div CH1 / CH2
+  bindRange('ch1-vdiv', v => {
+    state.ch1.vdiv_idx = parseInt(v, 10);
+    document.getElementById('ch1-vdiv-val').textContent = fmtVdiv(VDIV_STEPS[state.ch1.vdiv_idx]);
+    draw(); persistUiDebounced();
+  });
+  bindRange('ch2-vdiv', v => {
+    state.ch2.vdiv_idx = parseInt(v, 10);
+    document.getElementById('ch2-vdiv-val').textContent = fmtVdiv(VDIV_STEPS[state.ch2.vdiv_idx]);
+    draw(); persistUiDebounced();
+  });
+
+  // Offset
+  bindRange('ch1-off', v => {
+    state.ch1.offset = parseFloat(v);
+    document.getElementById('ch1-off-val').textContent = fmtV(state.ch1.offset);
+    draw(); persistUiDebounced();
+  });
+  bindRange('ch2-off', v => {
+    state.ch2.offset = parseFloat(v);
+    document.getElementById('ch2-off-val').textContent = fmtV(state.ch2.offset);
+    draw(); persistUiDebounced();
+  });
+
+  // Timebase : pilote la profondeur d'acquisition.
+  // 'input' = retour visuel immediat ; 'change' (relachement) = envoi config
+  bindRange('tdiv', v => {
+    state.tdiv_idx = parseInt(v, 10);
+    document.getElementById('tdiv-val').textContent = fmtSeconds(TDIV_STEPS[state.tdiv_idx] || 0);
+    // Met a jour la profondeur affichee en direct (sans envoyer a chaque pixel)
+    const p = state.presets[state.quality_idx];
+    if (p) {
+      const spf = tdivToSamples(TDIV_STEPS[state.tdiv_idx], p.fs);
+      document.getElementById('spf-val').textContent = spf + ' pts';
+    }
+    draw();
+  });
+  document.getElementById('tdiv').addEventListener('change', () => {
+    syncSamplesToTimebase(true);  // envoi effectif au relachement
+    persistUiDebounced();
+  });
+
+  // H position
+  bindRange('hpos', v => {
+    state.hpos = parseInt(v, 10);
+    document.getElementById('hpos-val').textContent = state.hpos + ' %';
+    draw(); persistUiDebounced();
+  });
+
+  // Trigger
+  bindBtnGroup('trig-mode',  v => { state.trig.mode   = v;          persistUiDebounced(); });
+  bindBtnGroup('trig-src',   v => { state.trig.source = parseInt(v,10); persistUiDebounced(); });
+  bindBtnGroup('trig-edge',  v => { state.trig.edge   = v;          persistUiDebounced(); });
+  bindRange('trig-lvl', v => {
+    state.trig.level = parseFloat(v);
+    document.getElementById('trig-lvl-val').textContent = fmtV(state.trig.level);
+    draw(); persistUiDebounced();
+  });
+}
+
+function bindRange(id, fn) {
+  const el = document.getElementById(id);
+  el.addEventListener('input', e => fn(e.target.value));
+}
+function bindBtnGroup(id, fn) {
+  const grp = document.getElementById(id);
+  grp.addEventListener('click', e => {
+    const b = e.target.closest('.btn');
+    if (!b) return;
+    grp.querySelectorAll('.btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    fn(b.dataset.v);
+  });
+}
+function bindChEn(id, chKey, srvField) {
+  document.getElementById(id).addEventListener('change', e => {
+    state[chKey].enabled = e.target.checked;
+    // Si on desactive, vider immediatement les samples residuels pour que
+    // les mesures et le trace cessent immediatement (sans attendre la prochaine trame).
+    if (!e.target.checked) state[chKey].samples = null;
+    const payload = { type: 'set_config' };
+    payload[srvField] = e.target.checked;
+    wsSend(payload);
+    fillQualitySelect(); // pour MAJ OS affiche
+    updateAcqInfo();
+    updateMeasurements();
+    draw();
+  });
+}
+function updateRunBtn() {
+  const b = document.getElementById('btn-run');
+  b.textContent = state.running ? '⏸ STOP' : '▶ RUN';
+  b.classList.toggle('primary', !state.running);
+  b.classList.toggle('danger',   state.running);
+}
+
+/* =====================================================================
+   Theme toggle
+   ===================================================================== */
+function toggleTheme() {
+  const html = document.documentElement;
+  const t = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', t);
+  document.getElementById('theme-icon').textContent = t === 'dark' ? '☀️' : '🌙';
+  localStorage.setItem('cscope-theme', t);
+  draw();
+}
+(function(){
+  const t = localStorage.getItem('cscope-theme') || 'dark';
+  document.getElementById('theme-icon').textContent = t === 'dark' ? '☀️' : '🌙';
+})();
+
+/* =====================================================================
+   Init
+   ===================================================================== */
+window.addEventListener('load', () => {
+  resizeCanvas();
+  bindUI();
+  updateRunBtn();
+  wsConnect();
+});
+window.addEventListener('resize', resizeCanvas);
+</script>
+</body>
+</html>
