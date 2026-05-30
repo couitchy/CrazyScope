@@ -458,7 +458,6 @@ select:focus { outline: none; border-color: var(--accent); }
       <div class="ctrl-row">
         <div class="btn-group">
           <button class="btn primary" id="btn-run">▶ RUN</button>
-          <button class="btn" id="btn-single">▷ Single</button>
         </div>
       </div>
     </div>
@@ -530,7 +529,7 @@ select:focus { outline: none; border-color: var(--accent); }
         <div class="btn-group" id="trig-mode">
           <button class="btn active" data-v="auto">Auto</button>
           <button class="btn" data-v="normal">Normal</button>
-          <button class="btn" data-v="none">Free</button>
+          <button class="btn" data-v="single">Single</button>
         </div>
       </div>
       <div class="ctrl-row">
@@ -588,16 +587,17 @@ function adcToVoltage(mv) {
 const VDIV_STEPS = [0.5, 1, 2, 5, 10, 20, 50, 100]; // V/div
 const MIN_SAMPLES = 128;
 const MAX_SAMPLES = 1024;   // doit matcher MAX_SAMPLES_PER_FRAME du firmware
+const MAX_DECIM   = 4000;   // decimation max (limite la base de temps lente)
 let TDIV_STEPS = []; // calcules dynamiquement selon Fs
 
 function buildTimebaseSteps(fs_hz) {
-  // tdiv tel que le buffer total (10 divisions) reste dans la plage
-  // [MIN_SAMPLES, MAX_SAMPLES] de samples acquis.
+  // Base de temps mini : MIN_SAMPLES points a pleine cadence (decim=1).
+  // Base de temps maxi : MAX_SAMPLES points avec decimation maxi.
   const minDiv = (MIN_SAMPLES / fs_hz) / 10;
-  const maxDiv = (MAX_SAMPLES / fs_hz) / 10;
+  const maxDiv = (MAX_SAMPLES * MAX_DECIM / fs_hz) / 10;
   const steps = [];
   let e = Math.floor(Math.log10(minDiv)) - 1;
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 60; i++) {
     for (const m of [1, 2, 5]) {
       const v = m * Math.pow(10, e);
       if (v >= minDiv * 0.999 && v <= maxDiv * 1.001) steps.push(v);
@@ -607,11 +607,22 @@ function buildTimebaseSteps(fs_hz) {
   return steps.length ? steps : [maxDiv];
 }
 
-// Convertit un tdiv (s/div) en nombre de samples a demander au firmware
-function tdivToSamples(tdiv, fs_hz) {
-  let n = Math.round(tdiv * 10 * fs_hz);
-  n = Math.max(MIN_SAMPLES, Math.min(MAX_SAMPLES, n));
-  return n;
+// Pour un tdiv (s/div) donne, calcule le couple (samples, decimation) :
+//  - petites bases de temps : pleine cadence (decim=1), nb de points ajuste
+//  - grandes bases de temps : nb de points au max, decimation croissante
+function tdivToAcq(tdiv, fs_hz) {
+  const samplesNeeded = Math.round(10 * tdiv * fs_hz); // points si decim=1
+  if (samplesNeeded <= MAX_SAMPLES) {
+    return { spf: Math.max(MIN_SAMPLES, samplesNeeded), decim: 1 };
+  }
+  let decim = Math.round(samplesNeeded / MAX_SAMPLES);
+  decim = Math.max(1, Math.min(MAX_DECIM, decim));
+  return { spf: MAX_SAMPLES, decim: decim };
+}
+
+// Temps estime de remplissage d'une trame (secondes) pour avertir l'utilisateur
+function estimateFillTime(spf, decim, fs_hz) {
+  return (spf * decim) / fs_hz;
 }
 
 function fmtSeconds(s) {
@@ -646,9 +657,9 @@ const state = {
   trig: { mode: 'auto', source: 1, edge: 'rising', level: 0 },
   quality_idx: 0,
   spf: 256,
+  decim: 1,
   presets: [],
   running: true,
-  singleShot: false,
   fs_effective: 100000,
   oversampling: 4,
   frameStats: { fps: 0, lastFrameTs: 0 }
@@ -729,7 +740,7 @@ function handleJsonMessage(d) {
 }
 
 function handleBinaryFrame(buf) {
-  if (!state.running && !state.singleShot) return;
+  if (!state.running) return;  // acquisition figee (STOP ou single capture)
 
   const view = new DataView(buf);
   const version = view.getUint8(0);
@@ -739,21 +750,29 @@ function handleBinaryFrame(buf) {
   const fs      = view.getUint32(4, true);
   const os      = view.getUint8(8);
 
+  // Decodage dans des vues temporaires (on ne valide pas encore)
+  let off = 12;
+  let newCh1 = null, newCh2 = null;
+  if (flags & 1) { newCh1 = new Uint16Array(buf, off, N); off += N * 2; }
+  if (flags & 2) { newCh2 = new Uint16Array(buf, off, N); }
+
+  // --- Logique de declenchement ---------------------------------------
+  // Auto   : on affiche toujours (synchro si front, sinon libre)
+  // Normal : on n'affiche QUE si un front est present dans la trame
+  // Single : idem Normal, puis on fige apres la capture
+  if (state.trig.mode === 'normal' || state.trig.mode === 'single') {
+    const src = state.trig.source === 1 ? newCh1 : newCh2;
+    const ti = findTrigger(src, state.trig.level, state.trig.edge);
+    if (ti < 0) return; // pas de front : on garde la trace precedente
+  }
+
+  // Trame acceptee : on met a jour l'etat affiche
   state.fs_effective = fs;
   state.oversampling = os;
+  state.ch1.samples = newCh1;
+  state.ch2.samples = newCh2;
 
-  let off = 12;
-  state.ch1.samples = null;
-  state.ch2.samples = null;
-  if (flags & 1) {
-    state.ch1.samples = new Uint16Array(buf, off, N);
-    off += N * 2;
-  }
-  if (flags & 2) {
-    state.ch2.samples = new Uint16Array(buf, off, N);
-  }
-
-  // FPS (cadence trames recues, pas frequence de redraw)
+  // FPS (cadence trames affichees)
   const now = performance.now();
   if (state.frameStats.lastFrameTs > 0) {
     const dt = (now - state.frameStats.lastFrameTs) / 1000;
@@ -766,14 +785,13 @@ function handleBinaryFrame(buf) {
   }
   state.frameStats.lastFrameTs = now;
 
-  // Si on est en Single, on stoppe apres la 1ere trame
-  if (state.singleShot) {
-    state.singleShot = false;
+  // Single : on fige apres cette capture
+  if (state.trig.mode === 'single') {
     state.running = false;
+    document.getElementById('scope').classList.add('paused');
     updateRunBtn();
   }
 
-  // Redraw via rAF pour ne pas geler le navigateur si le rate est eleve
   scheduleDraw(N);
 }
 
@@ -952,19 +970,11 @@ function draw() {
   else if (state.ch2.samples) N = state.ch2.samples.length;
   if (N < 2) { drawTraceLabels(W, H); return; }
 
-  // Recherche du trigger pour aligner la trace (stabilisation visuelle).
-  // shiftSamples = decalage applique pour amener le front trigger a la
-  // position voulue (hpos). En mode 'none', pas de decalage.
-  let trigIdx = -1;
-  if (state.trig.mode !== 'none') {
-    const src = state.trig.source === 1 ? state.ch1.samples : state.ch2.samples;
-    trigIdx = findTrigger(src, state.trig.level, state.trig.edge);
-    if (trigIdx < 0 && state.trig.mode === 'normal') {
-      // Normal sans front : on ne rafraichit pas la trace
-      drawTraceLabels(W, H);
-      return;
-    }
-  }
+  // Recherche du front pour aligner la trace (stabilisation visuelle).
+  // La decision d'AFFICHER la trame est deja prise dans handleBinaryFrame
+  // selon le mode trigger ; ici on cherche juste le front pour le placer.
+  const src = state.trig.source === 1 ? state.ch1.samples : state.ch2.samples;
+  const trigIdx = findTrigger(src, state.trig.level, state.trig.edge);
 
   // On etale les N samples sur toute la largeur de l'ecran.
   // pxPerSample : largeur d'un sample. Toute la profondeur acquise est
@@ -1083,12 +1093,11 @@ function updateOverlays(N) {
         'Mode ' + preset.name + ' · ' + fmtHz(state.fs_effective) +
         ' · ' + N + ' samples · OS×' + state.oversampling;
   }
-  const tlbl = state.trig.mode === 'none'
-    ? 'Free run'
-    : 'Trig : ' + state.trig.mode.toUpperCase()
+  const tlbl = 'Trig : ' + state.trig.mode.toUpperCase()
       + ' · CH' + state.trig.source + ' '
       + (state.trig.edge === 'rising' ? '↑' : '↓')
-      + ' ' + fmtV(state.trig.level);
+      + ' ' + fmtV(state.trig.level)
+      + (state.trig.mode === 'single' && !state.running ? ' (capturé)' : '');
   document.getElementById('ovl-trig').textContent = tlbl;
 
   // Debug overlay : valeurs ADC brutes (avant conversion par l'etage
@@ -1157,18 +1166,27 @@ function refreshUiAfterConfig() {
   draw();
 }
 
-// Calcule le nombre de samples pour la base de temps courante et l'envoie
+// Calcule (samples, decimation) pour la base de temps courante et envoie
 // au firmware si necessaire. send=false pour ne pas spammer au boot.
 function syncSamplesToTimebase(send) {
   const p = state.presets[state.quality_idx];
   if (!p) return;
   const tdiv = TDIV_STEPS[state.tdiv_idx];
   if (!tdiv) return;
-  const newSpf = tdivToSamples(tdiv, p.fs);
-  if (newSpf !== state.spf) {
-    state.spf = newSpf;
-    document.getElementById('spf-val').textContent = state.spf + ' pts';
-    if (send) wsSend({ type: 'set_config', samples_per_frame: state.spf });
+  const acq = tdivToAcq(tdiv, p.fs);
+  const changed = (acq.spf !== state.spf) || (acq.decim !== state.decim);
+  state.spf   = acq.spf;
+  state.decim = acq.decim;
+  // Indicateur de profondeur + avertissement si remplissage lent
+  const fill = estimateFillTime(acq.spf, acq.decim, p.fs);
+  let label = acq.spf + ' pts';
+  if (acq.decim > 1) label += ' ×' + acq.decim;
+  if (fill > 1.5) label += ' (~' + fill.toFixed(0) + ' s/trame)';
+  document.getElementById('spf-val').textContent = label;
+  if (send && changed) {
+    wsSend({ type: 'set_config',
+             samples_per_frame: state.spf,
+             decimation: state.decim });
   }
 }
 
@@ -1179,7 +1197,14 @@ function applyUiState(ui) {
   if (typeof ui.ch2_off  === 'number') state.ch2.offset   = ui.ch2_off;
   if (typeof ui.tdiv_idx === 'number') state.tdiv_idx     = ui.tdiv_idx;
   if (typeof ui.hpos     === 'number') state.hpos         = ui.hpos;
-  if (ui.trig) Object.assign(state.trig, ui.trig);
+  if (ui.trig) {
+    Object.assign(state.trig, ui.trig);
+    // Compat : l'ancien mode 'none'/'free' n'existe plus -> auto
+    if (state.trig.mode !== 'auto' && state.trig.mode !== 'normal'
+        && state.trig.mode !== 'single') {
+      state.trig.mode = 'auto';
+    }
+  }
   // Reflect in UI
   document.getElementById('ch1-vdiv').value = state.ch1.vdiv_idx;
   document.getElementById('ch2-vdiv').value = state.ch2.vdiv_idx;
@@ -1237,16 +1262,10 @@ function bindUI() {
     refreshUiAfterConfig();
   });
 
-  // Run / Stop / Single
+  // Run / Stop (en mode single : Run = arme une nouvelle capture)
   document.getElementById('btn-run').addEventListener('click', () => {
     state.running = !state.running;
     document.getElementById('scope').classList.toggle('paused', !state.running);
-    updateRunBtn();
-  });
-  document.getElementById('btn-single').addEventListener('click', () => {
-    state.singleShot = true;
-    state.running = true;
-    document.getElementById('scope').classList.remove('paused');
     updateRunBtn();
   });
 
@@ -1278,16 +1297,19 @@ function bindUI() {
     draw(); persistUiDebounced();
   });
 
-  // Timebase : pilote la profondeur d'acquisition.
+  // Timebase : pilote la profondeur d'acquisition + decimation.
   // 'input' = retour visuel immediat ; 'change' (relachement) = envoi config
   bindRange('tdiv', v => {
     state.tdiv_idx = parseInt(v, 10);
     document.getElementById('tdiv-val').textContent = fmtSeconds(TDIV_STEPS[state.tdiv_idx] || 0);
-    // Met a jour la profondeur affichee en direct (sans envoyer a chaque pixel)
     const p = state.presets[state.quality_idx];
     if (p) {
-      const spf = tdivToSamples(TDIV_STEPS[state.tdiv_idx], p.fs);
-      document.getElementById('spf-val').textContent = spf + ' pts';
+      const acq = tdivToAcq(TDIV_STEPS[state.tdiv_idx], p.fs);
+      const fill = estimateFillTime(acq.spf, acq.decim, p.fs);
+      let label = acq.spf + ' pts';
+      if (acq.decim > 1) label += ' ×' + acq.decim;
+      if (fill > 1.5) label += ' (~' + fill.toFixed(0) + ' s/trame)';
+      document.getElementById('spf-val').textContent = label;
     }
     draw();
   });
@@ -1304,7 +1326,17 @@ function bindUI() {
   });
 
   // Trigger
-  bindBtnGroup('trig-mode',  v => { state.trig.mode   = v;          persistUiDebounced(); });
+  bindBtnGroup('trig-mode', v => {
+    state.trig.mode = v;
+    if (v === 'single') {
+      // Selectionner Single arme une capture : on (re)lance l'acquisition,
+      // elle se figera des qu'un front sera capture.
+      state.running = true;
+      document.getElementById('scope').classList.remove('paused');
+    }
+    updateRunBtn();
+    persistUiDebounced();
+  });
   bindBtnGroup('trig-src',   v => { state.trig.source = parseInt(v,10); persistUiDebounced(); });
   bindBtnGroup('trig-edge',  v => { state.trig.edge   = v;          persistUiDebounced(); });
   bindRange('trig-lvl', v => {
@@ -1345,9 +1377,16 @@ function bindChEn(id, chKey, srvField) {
 }
 function updateRunBtn() {
   const b = document.getElementById('btn-run');
-  b.textContent = state.running ? '⏸ STOP' : '▶ RUN';
-  b.classList.toggle('primary', !state.running);
-  b.classList.toggle('danger',   state.running);
+  if (state.running) {
+    b.textContent = '⏸ STOP';
+    b.classList.remove('primary');
+    b.classList.add('danger');
+  } else {
+    // En single, le bouton sert a re-armer une capture
+    b.textContent = state.trig.mode === 'single' ? '▶ ARMER' : '▶ RUN';
+    b.classList.add('primary');
+    b.classList.remove('danger');
+  }
 }
 
 /* =====================================================================

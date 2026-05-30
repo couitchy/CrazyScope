@@ -113,6 +113,9 @@ struct AppConfig {
     bool     ch1_enabled = true;
     bool     ch2_enabled = true;
     uint16_t samples_per_frame = 256;
+    uint16_t decimation = 1;        // facteur de decimation temporelle
+                                    // (base de temps lente : moyenne plus de
+                                    //  samples ADC par point affiche)
     String   ui_state = "{}";       // etat UI brut, opaque pour le firmware
 };
 AppConfig cfg;
@@ -284,6 +287,8 @@ void loadConfig() {
                 cfg.ch1_enabled       = doc["ch1_enabled"]       | true;
                 cfg.ch2_enabled       = doc["ch2_enabled"]       | true;
                 cfg.samples_per_frame = doc["samples_per_frame"] | 256;
+                cfg.decimation        = doc["decimation"]        | 1;
+                if (cfg.decimation < 1) cfg.decimation = 1;
                 if (cfg.quality_idx >= NB_PRESETS) cfg.quality_idx = 0;
                 if (cfg.samples_per_frame > MAX_SAMPLES_PER_FRAME)
                     cfg.samples_per_frame = MAX_SAMPLES_PER_FRAME;
@@ -320,6 +325,7 @@ void saveConfig() {
     doc["ch1_enabled"]       = cfg.ch1_enabled;
     doc["ch2_enabled"]       = cfg.ch2_enabled;
     doc["samples_per_frame"] = cfg.samples_per_frame;
+    doc["decimation"]        = cfg.decimation;
 
     File f = LittleFS.open("/config.json", "w");
     if (f) {
@@ -585,6 +591,7 @@ void onWsEvent(AsyncWebSocket* /*s*/, AsyncWebSocketClient* client,
         d["ch1_enabled"]       = cfg.ch1_enabled;
         d["ch2_enabled"]       = cfg.ch2_enabled;
         d["samples_per_frame"] = cfg.samples_per_frame;
+        d["decimation"]        = cfg.decimation;
         JsonArray qa = d["presets"].to<JsonArray>();
         for (size_t i = 0; i < NB_PRESETS; ++i) {
             JsonObject o = qa.add<JsonObject>();
@@ -656,6 +663,14 @@ void handleWsCommand(AsyncWebSocketClient* client, uint8_t* data, size_t len) {
                 // Changer la taille de trame ne touche PAS la config ADC :
                 // pas de reconfig, juste la sauvegarde.
                 cfg.samples_per_frame = n; changed = true;
+            }
+        }
+        if (d["decimation"].is<int>()) {
+            uint32_t dec = d["decimation"];
+            if (dec >= 1 && dec <= 65535 && dec != cfg.decimation) {
+                // Decimation = nb de samples ADC moyennes par point affiche
+                // (en plus de l'oversampling du preset). Pas de reconfig ADC.
+                cfg.decimation = (uint16_t)dec; changed = true;
             }
         }
         // Garde-fou : au moins 1 voie active
@@ -837,11 +852,11 @@ void acquisitionTask(void* /*arg*/) {
     static uint8_t  raw[DMA_FRAME_SIZE];
     static uint16_t ch1_out[MAX_SAMPLES_PER_FRAME];
     static uint16_t ch2_out[MAX_SAMPLES_PER_FRAME];
-    // Accumulateurs 32 bits pour l'oversampling (somme avant moyennage)
+    // Accumulateurs 32 bits pour l'oversampling+decimation (somme avant moyennage)
     static uint32_t acc_ch1[MAX_SAMPLES_PER_FRAME];
     static uint32_t acc_ch2[MAX_SAMPLES_PER_FRAME];
-    static uint16_t cnt_ch1[MAX_SAMPLES_PER_FRAME];
-    static uint16_t cnt_ch2[MAX_SAMPLES_PER_FRAME];
+    static uint32_t cnt_ch1[MAX_SAMPLES_PER_FRAME];
+    static uint32_t cnt_ch2[MAX_SAMPLES_PER_FRAME];
 
     for (;;) {
         if (!g_client_connected) {
@@ -865,9 +880,15 @@ void acquisitionTask(void* /*arg*/) {
         uint8_t os = (nb_ch == 2) ? q.os_2ch : q.os_1ch;
         uint16_t N = cfg.samples_per_frame;
         if (N > MAX_SAMPLES_PER_FRAME) N = MAX_SAMPLES_PER_FRAME;
+        uint16_t decim = cfg.decimation < 1 ? 1 : cfg.decimation;
+        // Nombre total de samples ADC moyennes par point affiche
+        uint32_t os_total = (uint32_t)os * decim;
 
         FrameStats stats;
-        stats.fs_effective_hz = q.fs_effective_hz;
+        // Fs effectif reel = Fs preset / decimation (chaque point couvre
+        // decim fois plus de temps)
+        stats.fs_effective_hz = q.fs_effective_hz / decim;
+        if (stats.fs_effective_hz == 0) stats.fs_effective_hz = 1;
         stats.oversampling    = os;
         stats.nb_samples      = N;
         stats.flags           = (cfg.ch1_enabled || is_hf ? 1 : 0)
@@ -876,10 +897,10 @@ void acquisitionTask(void* /*arg*/) {
         // Init accumulateurs
         memset(acc_ch1, 0, sizeof(uint32_t) * N);
         memset(acc_ch2, 0, sizeof(uint32_t) * N);
-        memset(cnt_ch1, 0, sizeof(uint16_t) * N);
-        memset(cnt_ch2, 0, sizeof(uint16_t) * N);
+        memset(cnt_ch1, 0, sizeof(uint32_t) * N);
+        memset(cnt_ch2, 0, sizeof(uint32_t) * N);
 
-        uint32_t target_raw_per_ch = (uint32_t)N * os;
+        uint32_t target_raw_per_ch = (uint32_t)N * os_total;
         uint32_t got_ch1 = 0, got_ch2 = 0;
 
         // Boucle de remplissage de la trame
@@ -900,7 +921,7 @@ void acquisitionTask(void* /*arg*/) {
                 uint8_t ch  = s->type1.channel;
                 uint16_t v  = s->type1.data;
                 if (ch == ADC_CH1_CHANNEL && (cfg.ch1_enabled || is_hf)) {
-                    uint32_t slot = got_ch1 / os;
+                    uint32_t slot = got_ch1 / os_total;
                     if (slot < N) {
                         acc_ch1[slot] += v;
                         cnt_ch1[slot]++;
@@ -908,7 +929,7 @@ void acquisitionTask(void* /*arg*/) {
                     }
                 } else if (ch == ADC_CH2_CHANNEL &&
                            cfg.ch2_enabled && !is_hf) {
-                    uint32_t slot = got_ch2 / os;
+                    uint32_t slot = got_ch2 / os_total;
                     if (slot < N) {
                         acc_ch2[slot] += v;
                         cnt_ch2[slot]++;
