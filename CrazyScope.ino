@@ -88,7 +88,7 @@ static const QualityPreset PRESETS[] = {
     { "speed",     100000,  4,  8  }, // Vitesse  : bande utile 50 kHz
     { "standard",   50000,  8, 16  }, // Standard : bande utile 25 kHz, meilleur SNR
     { "precision",  25000, 16, 32  }, // Precision: bande utile 12 kHz, SNR x4..x5
-    { "hifreq",    500000,  1,  1  }  // HF mono-canal : bande utile 250 kHz
+    { "fastest",   500000,  1,  1  }  // HF mono-canal : bande utile 250 kHz
 };
 #define NB_PRESETS (sizeof(PRESETS)/sizeof(PRESETS[0]))
 

@@ -409,13 +409,11 @@ select:focus { outline: none; border-color: var(--accent); }
     <canvas id="scope-canvas"></canvas>
     <div class="scope-overlay">
       <div class="ovl-line" id="ovl-rate">— frames/s</div>
-      <div class="ovl-line" id="ovl-acq">—</div>
     </div>
     <div class="scope-overlay-right">
       <div class="ovl-line" id="ovl-trig">Trig : Auto</div>
     </div>
     <div class="scope-paused">⏸ PAUSE</div>
-    <div class="ack" id="ack-line">en attente de donnees...</div>
   </div>
 
   <!-- ===== Cartes CH1 / CH2 fusionnees (mesures + controles) ===== -->
@@ -487,10 +485,6 @@ select:focus { outline: none; border-color: var(--accent); }
       <div class="ctrl-row">
         <div class="ctrl-label">Mode <span class="val" id="acq-info">—</span></div>
         <select id="quality"></select>
-      </div>
-      <div class="ctrl-row">
-        <div class="ctrl-label">Profondeur <span class="val" id="spf-val">256 pts</span></div>
-        <div style="font-size:.72em;color:var(--text-secondary)">Pilotée par la base de temps</div>
       </div>
       <div class="ctrl-row">
         <div class="btn-group">
@@ -719,7 +713,6 @@ function handleJsonMessage(d) {
     document.getElementById('ch1-en').checked = state.ch1.enabled;
     document.getElementById('ch2-en').checked = state.ch2.enabled;
     document.getElementById('quality').value  = state.quality_idx;
-    document.getElementById('spf-val').textContent = state.spf + ' pts';
     if (d.ui_state) applyUiState(d.ui_state);
     refreshUiAfterConfig();
   }
@@ -1070,15 +1063,6 @@ function drawOffsetMarker(x, H, ch, color, label) {
 function updateOverlays(N) {
   document.getElementById('ovl-rate').textContent =
       state.frameStats.fps.toFixed(1) + ' fps';
-  const preset = state.presets[state.quality_idx];
-  if (preset) {
-    document.getElementById('ovl-acq').textContent =
-        fmtHz(state.fs_effective) + ' · OS×' + state.oversampling +
-        ' · ' + N + ' pts';
-    document.getElementById('ack-line').textContent =
-        'Mode ' + preset.name + ' · ' + fmtHz(state.fs_effective) +
-        ' · ' + N + ' samples · OS×' + state.oversampling;
-  }
   const tlbl = 'Trig : ' + state.trig.mode.toUpperCase()
       + ' · CH' + state.trig.source + ' '
       + (state.trig.edge === 'rising' ? '↑' : '↓')
@@ -1093,12 +1077,14 @@ function updateOverlays(N) {
 function fillQualitySelect() {
   const sel = document.getElementById('quality');
   sel.innerHTML = '';
-  state.presets.forEach((p, i) => {
+  // Tri par Fs croissant : precision -> standard -> speed -> fastest
+  const ordered = state.presets
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => a.p.fs - b.p.fs);
+  ordered.forEach(({ p, i }) => {
     const o = document.createElement('option');
     o.value = i;
-    const nbCh = (state.ch1.enabled ? 1 : 0) + (state.ch2.enabled ? 1 : 0);
-    const os = nbCh === 2 ? p.os_2ch : p.os_1ch;
-    o.textContent = p.name + ' (' + fmtHz(p.fs) + ' · OS×' + os + ')';
+    o.textContent = p.name;
     sel.appendChild(o);
   });
   sel.value = state.quality_idx;
@@ -1109,8 +1095,22 @@ function updateAcqInfo() {
   if (!p) return;
   const nbCh = (state.ch1.enabled ? 1 : 0) + (state.ch2.enabled ? 1 : 0);
   const os = nbCh === 2 ? p.os_2ch : p.os_1ch;
-  document.getElementById('acq-info').textContent =
-    fmtHz(p.fs) + ' · OS×' + os;
+  let label = fmtHzCompact(p.fs) + ' (oversampling x' + os + ') - '
+            + state.spf + ' pts';
+  if (state.decim > 1) {
+    const fill = estimateFillTime(state.spf, state.decim, p.fs);
+    label += ' (×' + state.decim;
+    if (fill > 1.5) label += ', ~' + fill.toFixed(0) + ' s/trame';
+    label += ')';
+  }
+  document.getElementById('acq-info').textContent = label;
+}
+// Format Hz compact sans zeros decimaux superflus (ex: 100 kHz, 1.5 kHz)
+function fmtHzCompact(f) {
+  if (!isFinite(f) || f <= 0) return '— Hz';
+  if (f >= 1e6) return parseFloat((f/1e6).toFixed(2)) + ' MHz';
+  if (f >= 1e3) return parseFloat((f/1e3).toFixed(2)) + ' kHz';
+  return Math.round(f) + ' Hz';
 }
 
 function refreshUiAfterConfig() {
@@ -1140,12 +1140,7 @@ function syncSamplesToTimebase(send) {
   const changed = (acq.spf !== state.spf) || (acq.decim !== state.decim);
   state.spf   = acq.spf;
   state.decim = acq.decim;
-  // Indicateur de profondeur + avertissement si remplissage lent
-  const fill = estimateFillTime(acq.spf, acq.decim, p.fs);
-  let label = acq.spf + ' pts';
-  if (acq.decim > 1) label += ' ×' + acq.decim;
-  if (fill > 1.5) label += ' (~' + fill.toFixed(0) + ' s/trame)';
-  document.getElementById('spf-val').textContent = label;
+  updateAcqInfo();
   if (send && changed) {
     wsSend({ type: 'set_config',
              samples_per_frame: state.spf,
@@ -1267,12 +1262,12 @@ function bindUI() {
     document.getElementById('tdiv-val').textContent = fmtSeconds(TDIV_STEPS[state.tdiv_idx] || 0);
     const p = state.presets[state.quality_idx];
     if (p) {
+      // Retour visuel immediat (sans envoi reseau) : on met a jour state.spf
+      // et state.decim pour que updateAcqInfo reflete la base de temps actuelle.
       const acq = tdivToAcq(TDIV_STEPS[state.tdiv_idx], p.fs);
-      const fill = estimateFillTime(acq.spf, acq.decim, p.fs);
-      let label = acq.spf + ' pts';
-      if (acq.decim > 1) label += ' ×' + acq.decim;
-      if (fill > 1.5) label += ' (~' + fill.toFixed(0) + ' s/trame)';
-      document.getElementById('spf-val').textContent = label;
+      state.spf   = acq.spf;
+      state.decim = acq.decim;
+      updateAcqInfo();
     }
     draw();
   });
