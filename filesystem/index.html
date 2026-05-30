@@ -226,6 +226,13 @@ h1 .accent { color: var(--accent); }
   font-variant-numeric: tabular-nums;
 }
 
+/* Bloc controles V/div + Offset integre dans la carte de mesures */
+.ch-controls {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
 /* ----------------- Cards de controle ---------------------------------- */
 .controls {
   display: grid;
@@ -389,7 +396,7 @@ select:focus { outline: none; border-color: var(--accent); }
     </div>
     <div class="header-right">
       <a class="icon-btn" href="/admin.html" title="Administration">
-        <span class="icon">⚙️</span><span>Admin</span>
+        <span class="icon">⚙️</span>
       </a>
       <button class="icon-btn" onclick="toggleTheme()" title="Theme">
         <span class="icon" id="theme-icon">🌙</span>
@@ -413,11 +420,17 @@ select:focus { outline: none; border-color: var(--accent); }
     <div class="ack" id="ack-line">en attente de donnees...</div>
   </div>
 
-  <!-- ===== Mesures auto ===== -->
+  <!-- ===== Cartes CH1 / CH2 fusionnees (mesures + controles) ===== -->
   <div class="measurements">
-    <div class="meas-card" id="meas-ch1">
+    <div class="meas-card" id="meas-ch1" style="--ch-color: var(--ch1-color)">
       <div class="meas-header">
-        <div class="meas-title"><span class="chip" style="background:var(--ch1-color)"></span>CH1</div>
+        <div class="meas-title">
+          <span class="chip" style="background:var(--ch1-color)"></span>CH1 (GPIO34)
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="ch1-en" checked>
+          <span class="switch-slider"></span>
+        </label>
       </div>
       <div class="meas-grid">
         <div class="meas-item"><div class="meas-label">Vpp</div><div class="meas-value" id="ch1-vpp">— V</div></div>
@@ -425,16 +438,42 @@ select:focus { outline: none; border-color: var(--accent); }
         <div class="meas-item"><div class="meas-label">Vrms</div><div class="meas-value" id="ch1-vrms">— V</div></div>
         <div class="meas-item"><div class="meas-label">Freq</div><div class="meas-value" id="ch1-freq">— Hz</div></div>
       </div>
+      <div class="ch-controls">
+        <div class="ctrl-row">
+          <div class="ctrl-label">V / div <span class="val" id="ch1-vdiv-val">5 V</span></div>
+          <input type="range" id="ch1-vdiv" min="0" max="7" value="3" step="1">
+        </div>
+        <div class="ctrl-row">
+          <div class="ctrl-label">Offset <span class="val" id="ch1-off-val">0,00 V</span></div>
+          <input type="range" id="ch1-off" min="-20" max="20" value="0" step="0.5">
+        </div>
+      </div>
     </div>
-    <div class="meas-card" id="meas-ch2">
+    <div class="meas-card" id="meas-ch2" style="--ch-color: var(--ch2-color)">
       <div class="meas-header">
-        <div class="meas-title"><span class="chip" style="background:var(--ch2-color)"></span>CH2</div>
+        <div class="meas-title">
+          <span class="chip" style="background:var(--ch2-color)"></span>CH2 (GPIO35)
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="ch2-en" checked>
+          <span class="switch-slider"></span>
+        </label>
       </div>
       <div class="meas-grid">
         <div class="meas-item"><div class="meas-label">Vpp</div><div class="meas-value" id="ch2-vpp">— V</div></div>
         <div class="meas-item"><div class="meas-label">V moy</div><div class="meas-value" id="ch2-vmean">— V</div></div>
         <div class="meas-item"><div class="meas-label">Vrms</div><div class="meas-value" id="ch2-vrms">— V</div></div>
         <div class="meas-item"><div class="meas-label">Freq</div><div class="meas-value" id="ch2-freq">— Hz</div></div>
+      </div>
+      <div class="ch-controls">
+        <div class="ctrl-row">
+          <div class="ctrl-label">V / div <span class="val" id="ch2-vdiv-val">5 V</span></div>
+          <input type="range" id="ch2-vdiv" min="0" max="7" value="3" step="1">
+        </div>
+        <div class="ctrl-row">
+          <div class="ctrl-label">Offset <span class="val" id="ch2-off-val">0,00 V</span></div>
+          <input type="range" id="ch2-off" min="-20" max="20" value="0" step="0.5">
+        </div>
       </div>
     </div>
   </div>
@@ -459,48 +498,6 @@ select:focus { outline: none; border-color: var(--accent); }
         <div class="btn-group">
           <button class="btn primary" id="btn-run">▶ RUN</button>
         </div>
-      </div>
-    </div>
-
-    <!-- Carte CH1 -->
-    <div class="ctrl-card" style="--ch-color: var(--ch1-color)">
-      <div class="ctrl-title">
-        <div class="ctrl-title-left">
-          <span class="chip" style="background:var(--ch1-color)"></span>CH1 (GPIO34)
-        </div>
-        <label class="switch">
-          <input type="checkbox" id="ch1-en" checked>
-          <span class="switch-slider"></span>
-        </label>
-      </div>
-      <div class="ctrl-row">
-        <div class="ctrl-label">V / div <span class="val" id="ch1-vdiv-val">5 V</span></div>
-        <input type="range" id="ch1-vdiv" min="0" max="7" value="3" step="1">
-      </div>
-      <div class="ctrl-row">
-        <div class="ctrl-label">Offset <span class="val" id="ch1-off-val">0,00 V</span></div>
-        <input type="range" id="ch1-off" min="-20" max="20" value="0" step="0.5">
-      </div>
-    </div>
-
-    <!-- Carte CH2 -->
-    <div class="ctrl-card" style="--ch-color: var(--ch2-color)">
-      <div class="ctrl-title">
-        <div class="ctrl-title-left">
-          <span class="chip" style="background:var(--ch2-color)"></span>CH2 (GPIO35)
-        </div>
-        <label class="switch">
-          <input type="checkbox" id="ch2-en" checked>
-          <span class="switch-slider"></span>
-        </label>
-      </div>
-      <div class="ctrl-row">
-        <div class="ctrl-label">V / div <span class="val" id="ch2-vdiv-val">5 V</span></div>
-        <input type="range" id="ch2-vdiv" min="0" max="7" value="3" step="1">
-      </div>
-      <div class="ctrl-row">
-        <div class="ctrl-label">Offset <span class="val" id="ch2-off-val">0,00 V</span></div>
-        <input type="range" id="ch2-off" min="-20" max="20" value="0" step="0.5">
       </div>
     </div>
 
