@@ -454,6 +454,7 @@
         <div class="sysinfo-item"><span class="sysinfo-item-label">RSSI</span><span class="sysinfo-item-value" id="sys-rssi">—</span></div>
         <div class="sysinfo-item"><span class="sysinfo-item-label">Uptime</span><span class="sysinfo-item-value" id="sys-uptime">—</span></div>
         <div class="sysinfo-item"><span class="sysinfo-item-label">Heap libre</span><span class="sysinfo-item-value" id="sys-heap">—</span></div>
+        <div class="sysinfo-item"><span class="sysinfo-item-label">Calibration ADC</span><span class="sysinfo-item-value" id="sys-cali">—</span></div>
         <div class="sysinfo-item"><span class="sysinfo-item-label">Firmware</span><span class="sysinfo-item-value" id="sys-sketch">—</span></div>
       </div>
     </div>
@@ -669,6 +670,9 @@ function refreshStatus() {
                                                        ? d.rssi + ' dBm' : '—';
     document.getElementById('sys-uptime').textContent= formatUptime(d.uptime_ms || 0);
     document.getElementById('sys-heap').textContent  = formatBytes(d.heap_free || 0);
+    document.getElementById('sys-cali').textContent  = d.cali_ok
+      ? '✓ eFuse'
+      : '⚠ non disponible';
     document.getElementById('sys-sketch').textContent= d.sketch || '—';
     if (typeof d.fs_total === 'number') {
       document.getElementById('storage-total').textContent = formatBytes(d.fs_total);

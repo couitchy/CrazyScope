@@ -128,7 +128,6 @@ volatile bool g_client_connected  = false;
 // (sinon on gele la pile AsyncTCP sur Core 0 pendant l'ecriture flash et
 //  les clients se font kicker sur timeout).
 volatile bool g_save_config_pending  = false;
-volatile bool g_save_uistate_pending = false;
 // Restart differe : on ne redemarre pas dans le callback HTTP (sinon la
 // reponse n'a pas le temps de partir et le client croit a une erreur).
 volatile bool     g_restart_pending = false;
@@ -150,7 +149,6 @@ TaskHandle_t acquisitionTaskHandle = NULL;
 
 void loadConfig();
 void saveConfig();
-void saveUiState();
 
 bool startWifiStation();
 void startWifiAP();
@@ -246,10 +244,6 @@ void loop() {
         saveConfig();
         Serial.println(F("[CFG] sauvegarde (deportee)"));
     }
-    if (g_save_uistate_pending) {
-        g_save_uistate_pending = false;
-        saveUiState();
-    }
 
     // Redemarrage differe (laisse le temps a la reponse HTTP de partir)
     if (g_restart_pending && (int32_t)(millis() - g_restart_at_ms) >= 0) {
@@ -292,6 +286,13 @@ void loadConfig() {
                 if (cfg.quality_idx >= NB_PRESETS) cfg.quality_idx = 0;
                 if (cfg.samples_per_frame > MAX_SAMPLES_PER_FRAME)
                     cfg.samples_per_frame = MAX_SAMPLES_PER_FRAME;
+                // ui_state : extraction puis re-serialisation en String brute
+                JsonVariant ui = doc["ui_state"];
+                if (!ui.isNull()) {
+                    String s;
+                    serializeJson(ui, s);
+                    cfg.ui_state = s;
+                }
             } else {
                 Serial.printf("[CFG] Erreur JSON config.json : %s\n", err.c_str());
             }
@@ -300,13 +301,17 @@ void loadConfig() {
         Serial.println(F("[CFG] Aucun /config.json, valeurs par defaut"));
     }
 
-    // ----- /ui_state.json : etat UI brut ---------------------------------
+    // Migration ancienne version : si /ui_state.json existe encore, on
+    // recupere son contenu et on supprime le fichier (desormais inutile).
     if (LittleFS.exists("/ui_state.json")) {
         File u = LittleFS.open("/ui_state.json", "r");
         if (u) {
-            cfg.ui_state = u.readString();
+            String s = u.readString();
             u.close();
+            if (s.length() > 0) cfg.ui_state = s;
         }
+        LittleFS.remove("/ui_state.json");
+        Serial.println(F("[CFG] migration /ui_state.json -> /config.json"));
     }
     if (cfg.ui_state.length() == 0) cfg.ui_state = "{}";
 
@@ -317,7 +322,9 @@ void loadConfig() {
 }
 
 void saveConfig() {
-    // ----- /config.json : parametres systeme -----------------------------
+    // Construction du JSON avec un placeholder pour ui_state, puis
+    // substitution brute (contourne le bug ArduinoJson v7 sur les
+    // sous-documents qui ne sont pas correctement deep-copies).
     JsonDocument doc;
     doc["wifi_ssid"]         = cfg.wifi_ssid;
     doc["wifi_password"]     = cfg.wifi_password;
@@ -326,26 +333,23 @@ void saveConfig() {
     doc["ch2_enabled"]       = cfg.ch2_enabled;
     doc["samples_per_frame"] = cfg.samples_per_frame;
     doc["decimation"]        = cfg.decimation;
+    doc["ui_state"]          = "@@UI_STATE_PLACEHOLDER@@";
+
+    String out;
+    if (serializeJson(doc, out) == 0) {
+        Serial.println(F("[CFG] Echec serialisation /config.json"));
+        return;
+    }
+    out.replace("\"@@UI_STATE_PLACEHOLDER@@\"",
+                cfg.ui_state.length() > 0 ? cfg.ui_state : String("{}"));
 
     File f = LittleFS.open("/config.json", "w");
-    if (f) {
-        if (serializeJson(doc, f) == 0) {
-            Serial.println(F("[CFG] Echec serialisation /config.json"));
-        }
-        f.close();
-    } else {
+    if (!f) {
         Serial.println(F("[CFG] Impossible d'ouvrir /config.json"));
+        return;
     }
-}
-
-// Sauvegarde dediee de l'UI state, appelee a chaque save_ui_state via WS
-// (evite de re-ecrire /config.json a chaque deplacement de slider).
-void saveUiState() {
-    File u = LittleFS.open("/ui_state.json", "w");
-    if (u) {
-        u.print(cfg.ui_state.length() > 0 ? cfg.ui_state : String("{}"));
-        u.close();
-    }
+    f.print(out);
+    f.close();
 }
 
 // ============================================================================
@@ -427,6 +431,7 @@ void setupWebServer() {
         d["fs_total"]  = (uint32_t)LittleFS.totalBytes();
         d["fs_used"]   = (uint32_t)LittleFS.usedBytes();
         d["heap_free"] = (uint32_t)ESP.getFreeHeap();
+        d["cali_ok"]   = cali_enabled;
         d["sketch"]    = "CrazyScope v1.0";
         String out;
         serializeJson(d, out);
@@ -687,7 +692,7 @@ void handleWsCommand(AsyncWebSocketClient* client, uint8_t* data, size_t len) {
             String s;
             serializeJson(ui, s);
             cfg.ui_state = s;
-            g_save_uistate_pending = true;
+            g_save_config_pending = true;
         }
     }
     else if (strcmp(type, "ping") == 0) {
