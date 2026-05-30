@@ -233,6 +233,15 @@ h1 .accent { color: var(--accent); }
   border-top: 1px solid var(--border-color);
 }
 
+/* Sous-texte discret sous un controle (ex: detail oversampling/decimation) */
+.ctrl-sub {
+  font-size: .75em;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.ctrl-sub:empty { display: none; }
+
 /* ----------------- Cards de controle ---------------------------------- */
 .controls {
   display: grid;
@@ -485,6 +494,7 @@ select:focus { outline: none; border-color: var(--accent); }
       <div class="ctrl-row">
         <div class="ctrl-label">Mode <span class="val" id="acq-info">—</span></div>
         <select id="quality"></select>
+        <div class="ctrl-sub" id="acq-detail"></div>
       </div>
       <div class="ctrl-row">
         <div class="btn-group">
@@ -1095,15 +1105,18 @@ function updateAcqInfo() {
   if (!p) return;
   const nbCh = (state.ch1.enabled ? 1 : 0) + (state.ch2.enabled ? 1 : 0);
   const os = nbCh === 2 ? p.os_2ch : p.os_1ch;
-  let label = fmtHzCompact(p.fs) + ' (oversampling x' + os + ') - '
-            + state.spf + ' pts';
-  if (state.decim > 1) {
+  const total = os * state.decim;  // nb total d'echantillons ADC moyennes par point
+  // Ligne principale en face de MODE : compact
+  document.getElementById('acq-info').textContent =
+    fmtHzCompact(p.fs) + ' - ' + state.spf + ' pts';
+  // Sous-ligne sous la combobox : detail (ou vide si 1 pt = 1 ech.)
+  let detail = '';
+  if (total > 1) {
+    detail = '1 pt = ' + total + ' éch.';
     const fill = estimateFillTime(state.spf, state.decim, p.fs);
-    label += ' (×' + state.decim;
-    if (fill > 1.5) label += ', ~' + fill.toFixed(0) + ' s/trame';
-    label += ')';
+    if (fill > 1.5) detail += ', ~' + fill.toFixed(0) + ' s/trame';
   }
-  document.getElementById('acq-info').textContent = label;
+  document.getElementById('acq-detail').textContent = detail;
 }
 // Format Hz compact sans zeros decimaux superflus (ex: 100 kHz, 1.5 kHz)
 function fmtHzCompact(f) {
