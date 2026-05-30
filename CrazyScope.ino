@@ -58,8 +58,6 @@
 //  ACQUISITION
 // ============================================================================
 
-// Debug : mettre a 1 pour ne PAS envoyer de trames binaires (test isolation)
-#define DEBUG_DISABLE_BINARY 0
 // Throttle d'envoi : la pile Wi-Fi+AsyncTCP de l'ESP32 sature autour de
 // 8-10 paquets/sec, peu importe la taille. On envoie donc moins de paquets,
 // mais plus gros (samples_per_frame jusqu'a 1024).
@@ -242,7 +240,6 @@ void loop() {
     if (g_save_config_pending) {
         g_save_config_pending = false;
         saveConfig();
-        Serial.println(F("[CFG] sauvegarde (deportee)"));
     }
 
     // Redemarrage differe (laisse le temps a la reponse HTTP de partir)
@@ -301,18 +298,6 @@ void loadConfig() {
         Serial.println(F("[CFG] Aucun /config.json, valeurs par defaut"));
     }
 
-    // Migration ancienne version : si /ui_state.json existe encore, on
-    // recupere son contenu et on supprime le fichier (desormais inutile).
-    if (LittleFS.exists("/ui_state.json")) {
-        File u = LittleFS.open("/ui_state.json", "r");
-        if (u) {
-            String s = u.readString();
-            u.close();
-            if (s.length() > 0) cfg.ui_state = s;
-        }
-        LittleFS.remove("/ui_state.json");
-        Serial.println(F("[CFG] migration /ui_state.json -> /config.json"));
-    }
     if (cfg.ui_state.length() == 0) cfg.ui_state = "{}";
 
     Serial.printf("[CFG] charge : SSID='%s' quality=%s CH1=%d CH2=%d\n",
@@ -579,14 +564,10 @@ void setupWebServer() {
 
 void onWsEvent(AsyncWebSocket* /*s*/, AsyncWebSocketClient* client,
                AwsEventType type, void* /*arg*/, uint8_t* data, size_t len) {
-    static uint32_t connect_ms = 0;
     switch (type) {
     case WS_EVT_CONNECT: {
-        connect_ms = millis();
-        Serial.printf("[WS] client #%u connecte (%s) heap=%u\n",
-                      client->id(),
-                      client->remoteIP().toString().c_str(),
-                      (unsigned)ESP.getFreeHeap());
+        Serial.printf("[WS] client #%u connecte (%s)\n", client->id(),
+                      client->remoteIP().toString().c_str());
         g_client_connected = true;
         // Construction du hello : ArduinoJson pour la base, puis injection
         // brute de cfg.ui_state (qui est deja du JSON valide).
@@ -615,17 +596,13 @@ void onWsEvent(AsyncWebSocket* /*s*/, AsyncWebSocketClient* client,
         break;
     }
     case WS_EVT_DISCONNECT:
-        Serial.printf("[WS] client #%u parti apres %u ms (heap=%u)\n",
-                      client->id(),
-                      (unsigned)(millis() - connect_ms),
-                      (unsigned)ESP.getFreeHeap());
+        Serial.printf("[WS] client #%u parti\n", client->id());
         if (ws.count() == 0) g_client_connected = false;
         break;
     case WS_EVT_ERROR:
-        Serial.printf("[WS] ERREUR client #%u\n", client->id());
+        Serial.printf("[WS] erreur client #%u\n", client->id());
         break;
     case WS_EVT_PONG:
-        // pong recu : le client est vivant
         break;
     case WS_EVT_DATA:
         handleWsCommand(client, data, len);
@@ -702,32 +679,14 @@ void handleWsCommand(AsyncWebSocketClient* client, uint8_t* data, size_t len) {
 
 void sendBinaryFrame(const uint16_t* ch1, const uint16_t* ch2,
                      const FrameStats& stats) {
-#if DEBUG_DISABLE_BINARY
-    (void)ch1; (void)ch2; (void)stats;
-    return;
-#else
     if (ws.count() == 0) return;
     // Garde-fou heap : AsyncWebSocket autorise jusqu'a 32 messages en file
     // par client. En bicanal a 1024 samples (~4 ko/trame), un hoquet reseau
     // peut donc monopoliser >100 ko de heap et faire lacher la connexion.
     // Si la RAM libre passe sous le seuil, on saute la trame : AsyncTCP a
     // ainsi le temps de purger sa file et le heap remonte.
-    if (ESP.getFreeHeap() < 90000) {
-        static uint32_t low_count = 0;
-        if (++low_count % 50 == 0) {
-            Serial.printf("[WS] heap bas (%u), trames sautees\n",
-                          (unsigned)ESP.getFreeHeap());
-        }
-        return;
-    }
-    if (!ws.availableForWriteAll()) {
-        static uint32_t sat_count = 0;
-        if (++sat_count % 50 == 0) {
-            Serial.printf("[WS] %u trames sautees (saturation queue)\n",
-                          (unsigned)sat_count);
-        }
-        return;
-    }
+    if (ESP.getFreeHeap() < 90000) return;
+    if (!ws.availableForWriteAll()) return;
 
     // Trame : header 12 octets + samples
     //   [0]    u8  version (=1)
@@ -766,13 +725,6 @@ void sendBinaryFrame(const uint16_t* ch1, const uint16_t* ch2,
     // Envoi a tous les clients connectes.
     // binaryAll() gere en interne la saturation et la gestion du buffer.
     ws.binaryAll(buf);
-    static uint32_t sent_count = 0;
-    if (++sent_count % 25 == 0) {
-        Serial.printf("[WS] %u trames envoyees (heap=%u)\n",
-                      (unsigned)sent_count,
-                      (unsigned)ESP.getFreeHeap());
-    }
-#endif
 }
 
 // ============================================================================

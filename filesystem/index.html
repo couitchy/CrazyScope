@@ -410,8 +410,6 @@ select:focus { outline: none; border-color: var(--accent); }
     <div class="scope-overlay">
       <div class="ovl-line" id="ovl-rate">— frames/s</div>
       <div class="ovl-line" id="ovl-acq">—</div>
-      <div class="ovl-line" id="ovl-debug-ch1" style="color:var(--ch1-color)">CH1 —</div>
-      <div class="ovl-line" id="ovl-debug-ch2" style="color:var(--ch2-color)">CH2 —</div>
     </div>
     <div class="scope-overlay-right">
       <div class="ovl-line" id="ovl-trig">Trig : Auto</div>
@@ -671,32 +669,23 @@ let wsReconnectTimer = null;
 function wsConnect() {
   const url = (location.protocol === 'https:' ? 'wss://' : 'ws://')
             + location.host + '/ws';
-  console.log('[WS] tentative de connexion', url);
   ws = new WebSocket(url);
   ws.binaryType = 'arraybuffer';
 
   ws.addEventListener('open', () => {
-    console.log('[WS] OPEN', new Date().toLocaleTimeString());
     setStatus(true, 'Connecte');
   });
-  ws.addEventListener('close', (e) => {
-    console.warn('[WS] CLOSE',
-                 'code=' + e.code,
-                 'reason=' + (e.reason || '(vide)'),
-                 'wasClean=' + e.wasClean);
-    setStatus(false, 'Deconnecte (code ' + e.code + ')');
+  ws.addEventListener('close', () => {
+    setStatus(false, 'Deconnecte');
     clearTimeout(wsReconnectTimer);
     wsReconnectTimer = setTimeout(wsConnect, 1500);
   });
-  ws.addEventListener('error', (e) => {
-    console.error('[WS] ERROR', e);
-    try { ws.close(); } catch(e2){}
-  });
+  ws.addEventListener('error', () => { try { ws.close(); } catch(e){} });
 
   ws.addEventListener('message', (e) => {
     if (typeof e.data === 'string') {
       try { handleJsonMessage(JSON.parse(e.data)); }
-      catch(err) { console.error('[WS] JSON parse error', err, e.data); }
+      catch(err) { console.error('[WS] JSON parse error', err); }
     } else {
       handleBinaryFrame(e.data);
     }
@@ -1096,29 +1085,6 @@ function updateOverlays(N) {
       + ' ' + fmtV(state.trig.level)
       + (state.trig.mode === 'single' && !state.running ? ' (capturé)' : '');
   document.getElementById('ovl-trig').textContent = tlbl;
-
-  // Debug overlay : valeurs ADC brutes (avant conversion par l'etage
-  // analogique). Permet de comparer directement avec un multimetre sur
-  // GPIO34/35 sans passer par la formule du pont diviseur.
-  document.getElementById('ovl-debug-ch1').textContent =
-    formatRawDebug('CH1', state.ch1.samples, state.ch1.enabled);
-  document.getElementById('ovl-debug-ch2').textContent =
-    formatRawDebug('CH2', state.ch2.samples, state.ch2.enabled);
-}
-
-function formatRawDebug(label, samples, enabled) {
-  if (!enabled || !samples || samples.length === 0) return label + ' —';
-  let mn = 65536, mx = 0, sum = 0;
-  for (let i = 0; i < samples.length; i++) {
-    const v = samples[i];
-    if (v < mn) mn = v;
-    if (v > mx) mx = v;
-    sum += v;
-  }
-  const avg = sum / samples.length;
-  return label + ' avg=' + avg.toFixed(0) + ' mV' +
-         ' (V_ADC=' + (avg/1000).toFixed(3) + ' V)' +
-         ' [' + mn + '..' + mx + ' mV]';
 }
 
 /* =====================================================================
