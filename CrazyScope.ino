@@ -33,6 +33,7 @@
 #include "esp_adc/adc_continuous.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
+#include "driver/dac_cosine.h"
 
 // ============================================================================
 //  CONFIGURATION MATERIELLE
@@ -62,6 +63,11 @@
 // 8-10 paquets/sec, peu importe la taille. On envoie donc moins de paquets,
 // mais plus gros (samples_per_frame jusqu'a 1024).
 #define FRAME_THROTTLE_MS 100
+
+// Bornes physiques du generateur DAC cosine (horloge 8 MHz / 65536 par step)
+// Fmin theorique ~122 Hz (step=1), Fmax pratique limitee au filtre de sortie.
+#define TEST_SIG_FREQ_MIN  130
+#define TEST_SIG_FREQ_MAX  100000
 
 // Buffer DMA : doit etre un multiple de SOC_ADC_DIGI_DATA_BYTES_PER_CONV (4)
 // On taille large pour absorber les jitters Wi-Fi
@@ -123,10 +129,17 @@ struct AppConfig {
     // Convention de stockage:  > 0  -> valeur en kOhm
     //                         == 0  -> court-circuit (R=0)
     //                          < 0  -> circuit ouvert (R=infini)
-    float    r_div_sig_kohm = 90.0f;
-    float    r_div_gnd_kohm = 10.0f;
-    float    r_offset_kohm  = 10.0f;
+    // Defaults : pas de front-end analogique (mesure brute 0..3.3V via
+    // entree directe). Pour un test de base, l'utilisateur peut connecter
+    // directement un signal entre 0 et 3.3V sur GPIO34/GPIO35.
+    float    r_div_sig_kohm =  0.0f;   // court-circuit (entree directe)
+    float    r_div_gnd_kohm = -1.0f;   // circuit ouvert
+    float    r_offset_kohm  = -1.0f;   // circuit ouvert
     float    v_offset_v     =  3.3f;
+    // Generateur de signal de test (sinusoide via le DAC cosine du SoC)
+    // GPIO25 (DAC_CHAN_0). Borne par TEST_SIG_FREQ_MIN/MAX (cf constantes)
+    bool     test_sig_enabled = false;
+    uint32_t test_sig_freq_hz = 1000;
     String   ui_state = "{}";       // etat UI brut, opaque pour le firmware
 };
 AppConfig cfg;
@@ -231,6 +244,9 @@ void setup() {
     // --- Web server / WebSocket -------------------------------------------
     setupWebServer();
 
+    // --- Generateur DAC cosinus (signal de test) --------------------------
+    applyTestSignal();
+
     // --- Task acquisition (Core 1) ----------------------------------------
     xTaskCreatePinnedToCore(
         acquisitionTask, "acq", 8192, NULL, 2,
@@ -294,10 +310,12 @@ void loadConfig() {
                 cfg.decimation        = doc["decimation"]        | 1;
                 if (cfg.decimation < 1) cfg.decimation = 1;
                 // Etage analogique (defaults conformes au schema kit ESP32)
-                cfg.r_div_sig_kohm = doc["r_div_sig_kohm"] | 90.0f;
-                cfg.r_div_gnd_kohm = doc["r_div_gnd_kohm"] | 10.0f;
-                cfg.r_offset_kohm  = doc["r_offset_kohm"]  | 10.0f;
+                cfg.r_div_sig_kohm = doc["r_div_sig_kohm"] |  0.0f;
+                cfg.r_div_gnd_kohm = doc["r_div_gnd_kohm"] | -1.0f;
+                cfg.r_offset_kohm  = doc["r_offset_kohm"]  | -1.0f;
                 cfg.v_offset_v     = doc["v_offset_v"]     |  3.3f;
+                cfg.test_sig_enabled = doc["test_sig_enabled"] | false;
+                cfg.test_sig_freq_hz = doc["test_sig_freq_hz"] | 1000;
                 if (cfg.quality_idx >= NB_PRESETS) cfg.quality_idx = 0;
                 if (cfg.samples_per_frame > MAX_SAMPLES_PER_FRAME)
                     cfg.samples_per_frame = MAX_SAMPLES_PER_FRAME;
@@ -340,6 +358,8 @@ void saveConfig() {
     doc["r_div_gnd_kohm"]    = cfg.r_div_gnd_kohm;
     doc["r_offset_kohm"]     = cfg.r_offset_kohm;
     doc["v_offset_v"]        = cfg.v_offset_v;
+    doc["test_sig_enabled"]  = cfg.test_sig_enabled;
+    doc["test_sig_freq_hz"]  = cfg.test_sig_freq_hz;
     doc["ui_state"]          = "@@UI_STATE_PLACEHOLDER@@";
 
     String out;
@@ -357,6 +377,68 @@ void saveConfig() {
     }
     f.print(out);
     f.close();
+}
+
+// ============================================================================
+//  GENERATEUR DE SIGNAL DE TEST (DAC cosinus)
+// ============================================================================
+//
+// L'ESP32 dispose de 2 DAC 8 bits (GPIO25 = DAC_CHAN_0, GPIO26 = DAC_CHAN_1)
+// avec un generateur cosinus integre, autonome (aucun CPU une fois lance).
+// On utilise GPIO25. L'utilisateur peut relier ce GPIO a l'entree de CH1 ou
+// CH2 (avant le pont diviseur, cote Vsig) pour verifier l'oscilloscope avec
+// un signal connu.
+//
+// Note materielle : le generateur cosinus partage son horloge entre les
+// deux canaux DAC. Comme on n'utilise qu'un canal, aucun conflit.
+
+static dac_cosine_handle_t g_dac_handle = NULL;
+
+void stopTestSignal() {
+    if (g_dac_handle != NULL) {
+        dac_cosine_stop(g_dac_handle);
+        dac_cosine_del_channel(g_dac_handle);
+        g_dac_handle = NULL;
+    }
+}
+
+void startTestSignal(uint32_t freq_hz) {
+    stopTestSignal();
+    dac_cosine_config_t c = {};
+    c.chan_id = DAC_CHAN_0;                     // GPIO25
+    c.freq_hz = freq_hz;
+    c.clk_src = DAC_COSINE_CLK_SRC_DEFAULT;     // RTC_8M (8 MHz)
+    c.atten   = DAC_COSINE_ATTEN_DEFAULT;       // 0 dB -> amplitude max
+    c.phase   = DAC_COSINE_PHASE_0;
+    c.offset  = 0;
+    c.flags.force_set_freq = false;
+    esp_err_t r = dac_cosine_new_channel(&c, &g_dac_handle);
+    if (r != ESP_OK) {
+        Serial.printf("[DAC] dac_cosine_new_channel echec : %s\n",
+                      esp_err_to_name(r));
+        g_dac_handle = NULL;
+        return;
+    }
+    r = dac_cosine_start(g_dac_handle);
+    if (r != ESP_OK) {
+        Serial.printf("[DAC] dac_cosine_start echec : %s\n",
+                      esp_err_to_name(r));
+        dac_cosine_del_channel(g_dac_handle);
+        g_dac_handle = NULL;
+        return;
+    }
+    Serial.printf("[DAC] signal de test : %u Hz sur GPIO25\n",
+                  (unsigned)freq_hz);
+}
+
+void applyTestSignal() {
+    // Borne defensive
+    if (cfg.test_sig_freq_hz < TEST_SIG_FREQ_MIN)
+        cfg.test_sig_freq_hz = TEST_SIG_FREQ_MIN;
+    if (cfg.test_sig_freq_hz > TEST_SIG_FREQ_MAX)
+        cfg.test_sig_freq_hz = TEST_SIG_FREQ_MAX;
+    if (cfg.test_sig_enabled) startTestSignal(cfg.test_sig_freq_hz);
+    else                      stopTestSignal();
 }
 
 // ============================================================================
@@ -542,6 +624,43 @@ void setupWebServer() {
                     "{\"ok\":true,\"msg\":\"Etage analogique enregistre\"}");
         });
 
+    // --- Signal de test (DAC cosinus) : lecture ---------------------------
+    server.on("/api/testsig", HTTP_GET, [](AsyncWebServerRequest* r) {
+        JsonDocument d;
+        d["enabled"]  = cfg.test_sig_enabled;
+        d["freq_hz"]  = cfg.test_sig_freq_hz;
+        d["freq_min"] = TEST_SIG_FREQ_MIN;
+        d["freq_max"] = TEST_SIG_FREQ_MAX;
+        String out;
+        serializeJson(d, out);
+        r->send(200, "application/json", out);
+    });
+
+    // --- Signal de test : ecriture ----------------------------------------
+    server.on("/api/testsig", HTTP_POST,
+        [](AsyncWebServerRequest* r) { /* handled in body */ },
+        NULL,
+        [](AsyncWebServerRequest* r, uint8_t* data, size_t len,
+           size_t /*index*/, size_t /*total*/) {
+            JsonDocument d;
+            if (deserializeJson(d, data, len) != DeserializationError::Ok) {
+                r->send(400, "text/plain", "JSON invalide");
+                return;
+            }
+            if (d["enabled"].is<bool>())
+                cfg.test_sig_enabled = d["enabled"];
+            if (d["freq_hz"].is<int>()) {
+                uint32_t f = d["freq_hz"];
+                if (f < TEST_SIG_FREQ_MIN) f = TEST_SIG_FREQ_MIN;
+                if (f > TEST_SIG_FREQ_MAX) f = TEST_SIG_FREQ_MAX;
+                cfg.test_sig_freq_hz = f;
+            }
+            applyTestSignal();
+            g_save_config_pending = true;
+            r->send(200, "application/json",
+                    "{\"ok\":true,\"msg\":\"Signal de test mis a jour\"}");
+        });
+
     // --- Upload de fichiers vers LittleFS (page admin) --------------------
     server.on("/api/upload", HTTP_POST,
         [](AsyncWebServerRequest* r) { r->send(200, "text/plain", "OK"); },
@@ -651,6 +770,8 @@ void onWsEvent(AsyncWebSocket* /*s*/, AsyncWebSocketClient* client,
         d["r_div_gnd_kohm"]    = cfg.r_div_gnd_kohm;
         d["r_offset_kohm"]     = cfg.r_offset_kohm;
         d["v_offset_v"]        = cfg.v_offset_v;
+        d["test_sig_enabled"]  = cfg.test_sig_enabled;
+        d["test_sig_freq_hz"]  = cfg.test_sig_freq_hz;
         JsonArray qa = d["presets"].to<JsonArray>();
         for (size_t i = 0; i < NB_PRESETS; ++i) {
             JsonObject o = qa.add<JsonObject>();

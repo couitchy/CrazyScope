@@ -573,9 +573,9 @@ select:focus { outline: none; border-color: var(--accent); }
    Formule lineaire : V_sig = a * V_ADC + b
      a = 1 + Rs/Ro + Rs/Rg          (avec 1/inf = 0)
      b = -V_offset * Rs/Ro
-   Valeurs par defaut conformes au schema kit (Rs=90, Rg=10, Ro=10, Voff=3.3) */
-let ADC_COEF_A = 19.0;
-let ADC_COEF_B = -29.7;
+   Valeurs par defaut : pas de front-end (entree directe 0..3.3V) */
+let ADC_COEF_A = 1.0;
+let ADC_COEF_B = 0.0;
 
 function recomputeAdcCoefs(rs, rg, ro, voff) {
   // Cas degeneres : entree directe sans pont diviseur
@@ -742,10 +742,10 @@ function handleJsonMessage(d) {
     state.spf         = d.samples_per_frame ?? 256;
     // Etage analogique : recalcule les coefs de conversion V_ADC -> V_sig
     recomputeAdcCoefs(
-      d.r_div_sig_kohm ?? 90.0,
-      d.r_div_gnd_kohm ?? 10.0,
-      d.r_offset_kohm  ?? 10.0,
-      d.v_offset_v     ?? 3.3
+      d.r_div_sig_kohm ??  0.0,
+      d.r_div_gnd_kohm ?? -1.0,
+      d.r_offset_kohm  ?? -1.0,
+      d.v_offset_v     ??  3.3
     );
     fillQualitySelect();
     document.getElementById('ch1-en').checked = state.ch1.enabled;

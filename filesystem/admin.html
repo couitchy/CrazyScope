@@ -298,6 +298,64 @@
       text-align: left;
     }
 
+    /* ===== Signal de test (DAC cosinus) ===== */
+    .testsig-section {
+      margin-top: 30px;
+      padding: 20px;
+      border-radius: 8px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+    }
+    .testsig-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .testsig-title { font-weight: 600; font-size: 1.05em; }
+    .testsig-sub {
+      font-size: 0.85em;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+    .testsig-freq-val {
+      float: right;
+      color: var(--accent-color);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+    .testsig-range { width: 100%; }
+    .testsig-bounds {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75em;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+    /* Switch (toggle ON/OFF) reutilise depuis la page oscillo */
+    .switch {
+      position: relative; display: inline-block;
+      width: 50px; height: 26px; flex-shrink: 0;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch-slider {
+      position: absolute; cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--border-color);
+      transition: 0.2s; border-radius: 26px;
+    }
+    .switch-slider:before {
+      position: absolute; content: "";
+      height: 20px; width: 20px;
+      left: 3px; bottom: 3px;
+      background: white;
+      transition: 0.2s; border-radius: 50%;
+    }
+    .switch input:checked + .switch-slider { background: var(--accent-color); }
+    .switch input:checked + .switch-slider:before { transform: translateX(24px); }
+
     .action-buttons {
       display: flex; gap: 15px; flex-wrap: wrap;
       justify-content: center;
@@ -476,11 +534,14 @@
     <!-- ===== Onglets ===== -->
     <div class="tabs-container">
       <div class="tabs-header">
-        <button class="tab active" onclick="switchTab(event, 'analog')">
+        <button class="tab active" onclick="switchTab(event, 'wifi')">
           <svg style="width:20px;height:20px;vertical-align:middle;margin-right:8px;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
-            <path d="M3 12h4l3-9 4 18 3-9h4"/>
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+            <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+            <line x1="12" y1="20" x2="12.01" y2="20"/>
           </svg>
-          Analogique
+          Wi-Fi
         </button>
         <button class="tab" onclick="switchTab(event, 'upload')">
           <svg style="width:20px;height:20px;vertical-align:middle;margin-right:8px;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
@@ -500,19 +561,16 @@
           </svg>
           Stockage
         </button>
-        <button class="tab" onclick="switchTab(event, 'wifi')">
+        <button class="tab" onclick="switchTab(event, 'analog')">
           <svg style="width:20px;height:20px;vertical-align:middle;margin-right:8px;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
-            <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
-            <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
-            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
-            <line x1="12" y1="20" x2="12.01" y2="20"/>
+            <path d="M3 12h4l3-9 4 18 3-9h4"/>
           </svg>
-          Wi-Fi
+          Analogique
         </button>
       </div>
 
       <!-- ===== Wi-Fi ===== -->
-      <div id="wifi-content" class="tab-content">
+      <div id="wifi-content" class="tab-content active">
         <div class="wifi-section">
           <div class="info-message">
             Configurez les identifiants du reseau Wi-Fi auquel l'ESP32 doit se connecter (mode STA).
@@ -549,20 +607,20 @@
       </div>
 
       <!-- ===== Etage analogique ===== -->
-      <div id="analog-content" class="tab-content active">
+      <div id="analog-content" class="tab-content">
         <div class="wifi-section">
           <pre class="schema-ascii">                        Roffset
-        ┌────────────────/\/\/\───────────┐
-     + ┌┴┐                                │
-Voffset│ │                                │
+        ┌────────────────/\/\/\───────────┐                     Vsig:    analog signal to be measured
+     + ┌┴┐                                │                     Vadc:    input pin of ESP32 (GPIO34 for CH1 | GPIO35 for CH2)
+Voffset│ │                                │                     Voffset: offset voltage so that AC signals can be measured (typically 3.3V)
      - └┬┘                                │
-        │        ┌────/\/\/\──────────────●───────────────o Vadc
-        │        │    Rdiv_sig            │
-        │       / \                       │
+        │        ┌────/\/\/\──────────────●──────────o Vadc     Recommended values:
+        │        │    Rdiv_sig            │                       with Rdiv_sig = 76k, Rdiv_gnd = 12k and Roffset = 10k
+        │       / \                       │                       it is possible to safely measure +/- 25 VAC
         │ Vsig │ ~ │                   /\/\/\ Rdiv_gnd
-        │       \ /                       │
-────────┴────────┴────────────────────────┴───────────────o
-                         GND</pre>
+        │       \ /                       │                     Default values (no front-end):
+────────┴────────┴────────────────────────┴──────────o            with Rdiv_sig = 0, Rdiv_gnd = ∞ and Roffset = ∞
+                         GND                                      it is only possible to measure 0–3.3 V</pre>
           <div class="wifi-form">
             <div class="form-group">
               <label class="form-label">R<sub>div_sig</sub></label>
@@ -602,6 +660,30 @@ Voffset│ │                                │
               <input class="form-input" type="number" id="v-off" step="0.01" min="0" max="5" placeholder="V">
             </div>
           </div>
+
+          <!-- ===== Signal de test (DAC cosinus) ===== -->
+          <div class="testsig-section">
+            <div class="testsig-header">
+              <div>
+                <div class="testsig-title">Signal de test</div>
+                <div class="testsig-sub">Sinusoïde pleine échelle disponible sur la pin GPIO25 de l'ESP32.</div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="testsig-en">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+            <div class="form-group" style="margin-top:14px;">
+              <label class="form-label" for="testsig-freq">
+                Fréquence <span class="testsig-freq-val" id="testsig-freq-val">1 000 Hz</span>
+              </label>
+              <input type="range" id="testsig-freq" min="130" max="100000" step="1" value="1000" class="testsig-range">
+              <div class="testsig-bounds">
+                <span>130 Hz</span><span>100 kHz</span>
+              </div>
+            </div>
+          </div>
+
           <div id="analog-msg" class="info-message" style="display:none;"></div>
           <div style="text-align:center;">
             <button class="btn" id="analog-save-btn">Enregistrer</button>
@@ -859,6 +941,8 @@ document.getElementById('analog-save-btn').addEventListener('click', () => {
   const rg   = rFromUi('r-gnd-val', 'r-gnd-mode');
   const ro   = rFromUi('r-off-val', 'r-off-mode');
   const voff = parseFloat(document.getElementById('v-off').value);
+  const tsEnabled = tsEn.checked;
+  const tsFreq    = sliderToFreq(parseInt(tsSlider.value, 10));
   const msg  = document.getElementById('analog-msg');
   msg.style.display = 'none';
   msg.classList.remove('success', 'warning');
@@ -878,15 +962,24 @@ document.getElementById('analog-save-btn').addEventListener('click', () => {
     if (!confirm(warn + '\nConfiguration enregistrée quand même ?')) return;
   }
 
-  fetch('/api/analog', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      r_div_sig_kohm: rs, r_div_gnd_kohm: rg,
-      r_offset_kohm:  ro, v_offset_v:     voff
+  // Sauvegarde combinee : etage analogique + signal de test
+  Promise.all([
+    fetch('/api/analog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        r_div_sig_kohm: rs, r_div_gnd_kohm: rg,
+        r_offset_kohm:  ro, v_offset_v:     voff
+      })
+    }),
+    fetch('/api/testsig', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: tsEnabled, freq_hz: tsFreq })
     })
-  }).then(r => r.json()).then(d => {
-    msg.textContent = d.msg || 'Enregistré.';
+  ]).then(async ([rA, rT]) => {
+    if (!rA.ok || !rT.ok) throw new Error('HTTP');
+    msg.textContent = 'Enregistré.';
     msg.classList.add('success');
     msg.style.display = 'block';
     setTimeout(() => { msg.style.display = 'none'; }, 3000);
@@ -895,6 +988,60 @@ document.getElementById('analog-save-btn').addEventListener('click', () => {
     msg.classList.add('warning');
     msg.style.display = 'block';
   });
+});
+
+/* ===== Signal de test (DAC cosinus) ===== */
+// Le slider est lineaire en index, mais mappe sur une echelle log de frequence
+// (de FMIN a FMAX) pour donner une sensation naturelle (ex: doubler la freq
+// avance d'une distance constante sur le slider).
+const TESTSIG_FMIN = 130;
+const TESTSIG_FMAX = 100000;
+const TESTSIG_STEPS = 1000;
+function freqToSlider(f) {
+  const r = Math.log(f / TESTSIG_FMIN) / Math.log(TESTSIG_FMAX / TESTSIG_FMIN);
+  return Math.round(r * TESTSIG_STEPS);
+}
+function sliderToFreq(s) {
+  const r = s / TESTSIG_STEPS;
+  return Math.round(TESTSIG_FMIN * Math.pow(TESTSIG_FMAX / TESTSIG_FMIN, r));
+}
+function fmtTestFreq(f) {
+  // parseFloat normalise les zeros decimaux superflus :
+  //   100.00 -> 100   |  1.50 -> 1.5  |  99.54 -> 99.54
+  if (f >= 1000) return parseFloat((f / 1000).toFixed(2)) + ' kHz';
+  return f + ' Hz';
+}
+
+const tsEn      = document.getElementById('testsig-en');
+const tsSlider  = document.getElementById('testsig-freq');
+const tsLabel   = document.getElementById('testsig-freq-val');
+tsSlider.min  = 0;
+tsSlider.max  = TESTSIG_STEPS;
+tsSlider.step = 1;
+
+function refreshTestSigLabel(f) { tsLabel.textContent = fmtTestFreq(f); }
+
+// Initialisation immediate avec une valeur par defaut coherente : sinon, tant
+// que le fetch /api/testsig n'a pas repondu, le slider est a fond a droite
+// (heritage de value="1000" du HTML qui devient = max apres reset min/max) et
+// le label conserve le texte HTML initial.
+tsSlider.value = freqToSlider(1000);
+refreshTestSigLabel(1000);
+
+function loadTestSig() {
+  fetch('/api/testsig').then(r => r.json()).then(d => {
+    tsEn.checked = !!d.enabled;
+    const f = d.freq_hz || 1000;
+    tsSlider.value = freqToSlider(f);
+    refreshTestSigLabel(f);
+  }).catch(() => {});
+}
+loadTestSig();
+
+// Retour visuel immediat pendant le glissement (pas d'envoi : c'est le
+// bouton "Enregistrer" qui applique toute la config de l'onglet)
+tsSlider.addEventListener('input', () => {
+  refreshTestSigLabel(sliderToFreq(parseInt(tsSlider.value, 10)));
 });
 
 /* ===== Upload fichier ===== */
