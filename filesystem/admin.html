@@ -283,6 +283,20 @@
       border-color: var(--danger-color);
       color: var(--danger-color);
     }
+    .schema-ascii {
+      margin: 0 0 20px 0;
+      padding: 16px 20px;
+      border-radius: 8px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 0.85em;
+      line-height: 1.3;
+      white-space: pre;
+      overflow-x: auto;
+      text-align: left;
+    }
 
     .action-buttons {
       display: flex; gap: 15px; flex-wrap: wrap;
@@ -462,14 +476,11 @@
     <!-- ===== Onglets ===== -->
     <div class="tabs-container">
       <div class="tabs-header">
-        <button class="tab active" onclick="switchTab(event, 'wifi')">
+        <button class="tab active" onclick="switchTab(event, 'analog')">
           <svg style="width:20px;height:20px;vertical-align:middle;margin-right:8px;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
-            <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
-            <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
-            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
-            <line x1="12" y1="20" x2="12.01" y2="20"/>
+            <path d="M3 12h4l3-9 4 18 3-9h4"/>
           </svg>
-          Wi-Fi
+          Analogique
         </button>
         <button class="tab" onclick="switchTab(event, 'upload')">
           <svg style="width:20px;height:20px;vertical-align:middle;margin-right:8px;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
@@ -489,10 +500,19 @@
           </svg>
           Stockage
         </button>
+        <button class="tab" onclick="switchTab(event, 'wifi')">
+          <svg style="width:20px;height:20px;vertical-align:middle;margin-right:8px;stroke:currentColor;fill:none;" viewBox="0 0 24 24" stroke-width="2">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+            <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+            <line x1="12" y1="20" x2="12.01" y2="20"/>
+          </svg>
+          Wi-Fi
+        </button>
       </div>
 
       <!-- ===== Wi-Fi ===== -->
-      <div id="wifi-content" class="tab-content active">
+      <div id="wifi-content" class="tab-content">
         <div class="wifi-section">
           <div class="info-message">
             Configurez les identifiants du reseau Wi-Fi auquel l'ESP32 doit se connecter (mode STA).
@@ -524,6 +544,67 @@
           </div>
           <div id="wifi-list" class="wifi-list">
             <div class="empty-state">Cliquez sur "Scanner" pour lister les reseaux disponibles.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Etage analogique ===== -->
+      <div id="analog-content" class="tab-content active">
+        <div class="wifi-section">
+          <pre class="schema-ascii">                        Roffset
+        ┌────────────────/\/\/\───────────┐
+     + ┌┴┐                                │
+Voffset│ │                                │
+     - └┬┘                                │
+        │        ┌────/\/\/\──────────────●───────────────o Vadc
+        │        │    Rdiv_sig            │
+        │       / \                       │
+        │ Vsig │ ~ │                   /\/\/\ Rdiv_gnd
+        │       \ /                       │
+────────┴────────┴────────────────────────┴───────────────o
+                         GND</pre>
+          <div class="wifi-form">
+            <div class="form-group">
+              <label class="form-label">R<sub>div_sig</sub></label>
+              <div style="display:flex;gap:8px;">
+                <input class="form-input" type="number" id="r-sig-val" step="0.1" min="0" placeholder="kΩ" style="flex:1;">
+                <select class="form-input" id="r-sig-mode" style="width:180px;">
+                  <option value="kohm">kΩ</option>
+                  <option value="short">Court-circuit (0 Ω)</option>
+                  <option value="open">Circuit ouvert (∞ Ω)</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">R<sub>div_gnd</sub></label>
+              <div style="display:flex;gap:8px;">
+                <input class="form-input" type="number" id="r-gnd-val" step="0.1" min="0" placeholder="kΩ" style="flex:1;">
+                <select class="form-input" id="r-gnd-mode" style="width:180px;">
+                  <option value="kohm">kΩ</option>
+                  <option value="short">Court-circuit (0 Ω)</option>
+                  <option value="open">Circuit ouvert (∞ Ω)</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">R<sub>offset</sub></label>
+              <div style="display:flex;gap:8px;">
+                <input class="form-input" type="number" id="r-off-val" step="0.1" min="0" placeholder="kΩ" style="flex:1;">
+                <select class="form-input" id="r-off-mode" style="width:180px;">
+                  <option value="kohm">kΩ</option>
+                  <option value="short">Court-circuit (0 Ω)</option>
+                  <option value="open">Circuit ouvert (∞ Ω)</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="v-off">V<sub>offset</sub></label>
+              <input class="form-input" type="number" id="v-off" step="0.01" min="0" max="5" placeholder="V">
+            </div>
+          </div>
+          <div id="analog-msg" class="info-message" style="display:none;"></div>
+          <div style="text-align:center;">
+            <button class="btn" id="analog-save-btn">Enregistrer</button>
           </div>
         </div>
       </div>
@@ -733,6 +814,87 @@ document.getElementById('wifi-save-btn').addEventListener('click', () => {
   }).then(r => r.json()).then(d => {
     alert(d.msg || 'Configuration enregistree, redemarrage...');
   }).catch(() => alert('Erreur lors de la sauvegarde.'));
+});
+
+/* ===== Etage analogique ===== */
+// Convention stockage: > 0 = kOhm | 0 = court-circuit | < 0 = circuit ouvert
+function rToUi(val, idVal, idMode) {
+  const inp = document.getElementById(idVal);
+  const sel = document.getElementById(idMode);
+  if (val < 0)       { sel.value = 'open';  inp.value = ''; inp.disabled = true; }
+  else if (val === 0){ sel.value = 'short'; inp.value = ''; inp.disabled = true; }
+  else               { sel.value = 'kohm';  inp.value = val; inp.disabled = false; }
+}
+function rFromUi(idVal, idMode) {
+  const mode = document.getElementById(idMode).value;
+  if (mode === 'open')  return -1;
+  if (mode === 'short') return 0;
+  const v = parseFloat(document.getElementById(idVal).value);
+  return isFinite(v) && v > 0 ? v : NaN;
+}
+function bindRMode(idVal, idMode) {
+  document.getElementById(idMode).addEventListener('change', () => {
+    const inp = document.getElementById(idVal);
+    const mode = document.getElementById(idMode).value;
+    inp.disabled = (mode !== 'kohm');
+    if (mode !== 'kohm') inp.value = '';
+  });
+}
+bindRMode('r-sig-val', 'r-sig-mode');
+bindRMode('r-gnd-val', 'r-gnd-mode');
+bindRMode('r-off-val', 'r-off-mode');
+
+function loadAnalog() {
+  fetch('/api/analog').then(r => r.json()).then(d => {
+    rToUi(d.r_div_sig_kohm, 'r-sig-val', 'r-sig-mode');
+    rToUi(d.r_div_gnd_kohm, 'r-gnd-val', 'r-gnd-mode');
+    rToUi(d.r_offset_kohm,  'r-off-val', 'r-off-mode');
+    document.getElementById('v-off').value = d.v_offset_v;
+  }).catch(() => {});
+}
+loadAnalog();
+
+document.getElementById('analog-save-btn').addEventListener('click', () => {
+  const rs   = rFromUi('r-sig-val', 'r-sig-mode');
+  const rg   = rFromUi('r-gnd-val', 'r-gnd-mode');
+  const ro   = rFromUi('r-off-val', 'r-off-mode');
+  const voff = parseFloat(document.getElementById('v-off').value);
+  const msg  = document.getElementById('analog-msg');
+  msg.style.display = 'none';
+  msg.classList.remove('success', 'warning');
+
+  if (!isFinite(rs) || !isFinite(rg) || !isFinite(ro) || !isFinite(voff)) {
+    msg.textContent = 'Valeurs invalides : saisir un nombre positif pour chaque résistance en mode kΩ, ou choisir "Court-circuit" / "Circuit ouvert".';
+    msg.classList.add('warning');
+    msg.style.display = 'block';
+    return;
+  }
+  // Avertissements pour les configs non exploitables (la formule diverge)
+  let warn = '';
+  if (rs < 0)        warn = 'R_div_sig = ∞ : aucun signal ne peut atteindre l\'ADC.';
+  else if (ro === 0) warn = 'R_offset = 0 : l\'ADC sera figé à V_offset.';
+  else if (rg === 0) warn = 'R_div_gnd = 0 : l\'ADC sera figé à 0 V.';
+  if (warn) {
+    if (!confirm(warn + '\nConfiguration enregistrée quand même ?')) return;
+  }
+
+  fetch('/api/analog', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      r_div_sig_kohm: rs, r_div_gnd_kohm: rg,
+      r_offset_kohm:  ro, v_offset_v:     voff
+    })
+  }).then(r => r.json()).then(d => {
+    msg.textContent = d.msg || 'Enregistré.';
+    msg.classList.add('success');
+    msg.style.display = 'block';
+    setTimeout(() => { msg.style.display = 'none'; }, 3000);
+  }).catch(() => {
+    msg.textContent = 'Erreur lors de la sauvegarde.';
+    msg.classList.add('warning');
+    msg.style.display = 'block';
+  });
 });
 
 /* ===== Upload fichier ===== */

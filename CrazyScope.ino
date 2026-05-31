@@ -114,6 +114,19 @@ struct AppConfig {
     uint16_t decimation = 1;        // facteur de decimation temporelle
                                     // (base de temps lente : moyenne plus de
                                     //  samples ADC par point affiche)
+    // Etage analogique entre V_sig et l'ADC :
+    //   V_sig --[Rdiv_sig]-- ADC --[Rdiv_gnd]-- GND
+    //                         |
+    //                       [Roffset]
+    //                         |
+    //                       Voffset (ex: 3.3V)
+    // Convention de stockage:  > 0  -> valeur en kOhm
+    //                         == 0  -> court-circuit (R=0)
+    //                          < 0  -> circuit ouvert (R=infini)
+    float    r_div_sig_kohm = 90.0f;
+    float    r_div_gnd_kohm = 10.0f;
+    float    r_offset_kohm  = 10.0f;
+    float    v_offset_v     =  3.3f;
     String   ui_state = "{}";       // etat UI brut, opaque pour le firmware
 };
 AppConfig cfg;
@@ -280,6 +293,11 @@ void loadConfig() {
                 cfg.samples_per_frame = doc["samples_per_frame"] | 256;
                 cfg.decimation        = doc["decimation"]        | 1;
                 if (cfg.decimation < 1) cfg.decimation = 1;
+                // Etage analogique (defaults conformes au schema kit ESP32)
+                cfg.r_div_sig_kohm = doc["r_div_sig_kohm"] | 90.0f;
+                cfg.r_div_gnd_kohm = doc["r_div_gnd_kohm"] | 10.0f;
+                cfg.r_offset_kohm  = doc["r_offset_kohm"]  | 10.0f;
+                cfg.v_offset_v     = doc["v_offset_v"]     |  3.3f;
                 if (cfg.quality_idx >= NB_PRESETS) cfg.quality_idx = 0;
                 if (cfg.samples_per_frame > MAX_SAMPLES_PER_FRAME)
                     cfg.samples_per_frame = MAX_SAMPLES_PER_FRAME;
@@ -318,6 +336,10 @@ void saveConfig() {
     doc["ch2_enabled"]       = cfg.ch2_enabled;
     doc["samples_per_frame"] = cfg.samples_per_frame;
     doc["decimation"]        = cfg.decimation;
+    doc["r_div_sig_kohm"]    = cfg.r_div_sig_kohm;
+    doc["r_div_gnd_kohm"]    = cfg.r_div_gnd_kohm;
+    doc["r_offset_kohm"]     = cfg.r_offset_kohm;
+    doc["v_offset_v"]        = cfg.v_offset_v;
     doc["ui_state"]          = "@@UI_STATE_PLACEHOLDER@@";
 
     String out;
@@ -473,6 +495,53 @@ void setupWebServer() {
         r->send(200, "application/json", out);
     });
 
+    // --- Etage analogique : lecture des parametres ------------------------
+    server.on("/api/analog", HTTP_GET, [](AsyncWebServerRequest* r) {
+        JsonDocument d;
+        d["r_div_sig_kohm"] = cfg.r_div_sig_kohm;
+        d["r_div_gnd_kohm"] = cfg.r_div_gnd_kohm;
+        d["r_offset_kohm"]  = cfg.r_offset_kohm;
+        d["v_offset_v"]     = cfg.v_offset_v;
+        String out;
+        serializeJson(d, out);
+        r->send(200, "application/json", out);
+    });
+
+    // --- Etage analogique : ecriture des parametres -----------------------
+    // Convention: > 0 -> kOhm ; == 0 -> court-circuit ; < 0 -> circuit ouvert
+    server.on("/api/analog", HTTP_POST,
+        [](AsyncWebServerRequest* r) { /* handled in body */ },
+        NULL,
+        [](AsyncWebServerRequest* r, uint8_t* data, size_t len,
+           size_t /*index*/, size_t /*total*/) {
+            JsonDocument d;
+            if (deserializeJson(d, data, len) != DeserializationError::Ok) {
+                r->send(400, "text/plain", "JSON invalide");
+                return;
+            }
+            if (d["r_div_sig_kohm"].is<float>())
+                cfg.r_div_sig_kohm = d["r_div_sig_kohm"];
+            if (d["r_div_gnd_kohm"].is<float>())
+                cfg.r_div_gnd_kohm = d["r_div_gnd_kohm"];
+            if (d["r_offset_kohm"].is<float>())
+                cfg.r_offset_kohm  = d["r_offset_kohm"];
+            if (d["v_offset_v"].is<float>())
+                cfg.v_offset_v     = d["v_offset_v"];
+            g_save_config_pending = true;
+            // Notification temps reel aux clients oscilloscope connectes
+            JsonDocument push;
+            push["type"]            = "analog_config";
+            push["r_div_sig_kohm"]  = cfg.r_div_sig_kohm;
+            push["r_div_gnd_kohm"]  = cfg.r_div_gnd_kohm;
+            push["r_offset_kohm"]   = cfg.r_offset_kohm;
+            push["v_offset_v"]      = cfg.v_offset_v;
+            String s;
+            serializeJson(push, s);
+            ws.textAll(s);
+            r->send(200, "application/json",
+                    "{\"ok\":true,\"msg\":\"Etage analogique enregistre\"}");
+        });
+
     // --- Upload de fichiers vers LittleFS (page admin) --------------------
     server.on("/api/upload", HTTP_POST,
         [](AsyncWebServerRequest* r) { r->send(200, "text/plain", "OK"); },
@@ -578,6 +647,10 @@ void onWsEvent(AsyncWebSocket* /*s*/, AsyncWebSocketClient* client,
         d["ch2_enabled"]       = cfg.ch2_enabled;
         d["samples_per_frame"] = cfg.samples_per_frame;
         d["decimation"]        = cfg.decimation;
+        d["r_div_sig_kohm"]    = cfg.r_div_sig_kohm;
+        d["r_div_gnd_kohm"]    = cfg.r_div_gnd_kohm;
+        d["r_offset_kohm"]     = cfg.r_offset_kohm;
+        d["v_offset_v"]        = cfg.v_offset_v;
         JsonArray qa = d["presets"].to<JsonArray>();
         for (size_t i = 0; i < NB_PRESETS; ++i) {
             JsonObject o = qa.add<JsonObject>();

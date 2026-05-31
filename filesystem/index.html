@@ -565,14 +565,35 @@ select:focus { outline: none; border-color: var(--accent); }
    recus sont DEJA en millivolts (corriges via eFuses) et non plus
    en valeurs raw 0..4095.
    ===================================================================== */
-const GAIN        = 0.05263;    // pente Vadc / Vin (etage analogique)
-const OFFSET      = 1.5631;     // Vadc lorsque Vin = 0
+/* Coefficients de conversion V_ADC -> V_signal, calcules a partir des
+   parametres de l'etage analogique recus dans le hello (puis mis a jour
+   en live via le message 'analog_config' du firmware).
+   Convention: rs, rg, ro en kOhm avec
+     > 0 -> valeur     | 0 -> court-circuit | < 0 -> circuit ouvert (infini)
+   Formule lineaire : V_sig = a * V_ADC + b
+     a = 1 + Rs/Ro + Rs/Rg          (avec 1/inf = 0)
+     b = -V_offset * Rs/Ro
+   Valeurs par defaut conformes au schema kit (Rs=90, Rg=10, Ro=10, Voff=3.3) */
+let ADC_COEF_A = 19.0;
+let ADC_COEF_B = -29.7;
+
+function recomputeAdcCoefs(rs, rg, ro, voff) {
+  // Cas degeneres : entree directe sans pont diviseur
+  if (rs === 0) { ADC_COEF_A = 1; ADC_COEF_B = 0; return; }
+  // Pas de signal possible : on signale par des coefs NaN -> measures = NaN
+  if (rs < 0)   { ADC_COEF_A = NaN; ADC_COEF_B = NaN; return; }
+  // 1/R = 0 si R=infini, sinon 1/R (les cas R=0 cote Ro ou Rg sont
+  // pathologiques -> coef infini, l'affichage sera "— V")
+  const rsRo = (ro < 0) ? 0 : (ro === 0 ? Infinity : rs / ro);
+  const rsRg = (rg < 0) ? 0 : (rg === 0 ? Infinity : rs / rg);
+  ADC_COEF_A = 1 + rsRo + rsRg;
+  ADC_COEF_B = -voff * rsRo;
+}
 
 function adcToVoltage(mv) {
   // mv : tension a la broche ADC en millivolts (calibree eFuse)
-  // retourne V_in reelle apres conversion par l'etage analogique
-  const vadc = mv / 1000;
-  return (vadc - OFFSET) / GAIN;
+  // retourne V_signal reelle apres conversion par l'etage analogique
+  return (mv / 1000) * ADC_COEF_A + ADC_COEF_B;
 }
 
 /* =====================================================================
@@ -719,12 +740,26 @@ function handleJsonMessage(d) {
     state.ch1.enabled = d.ch1_enabled ?? true;
     state.ch2.enabled = d.ch2_enabled ?? true;
     state.spf         = d.samples_per_frame ?? 256;
+    // Etage analogique : recalcule les coefs de conversion V_ADC -> V_sig
+    recomputeAdcCoefs(
+      d.r_div_sig_kohm ?? 90.0,
+      d.r_div_gnd_kohm ?? 10.0,
+      d.r_offset_kohm  ?? 10.0,
+      d.v_offset_v     ?? 3.3
+    );
     fillQualitySelect();
     document.getElementById('ch1-en').checked = state.ch1.enabled;
     document.getElementById('ch2-en').checked = state.ch2.enabled;
     document.getElementById('quality').value  = state.quality_idx;
     if (d.ui_state) applyUiState(d.ui_state);
     refreshUiAfterConfig();
+  }
+  else if (d.type === 'analog_config') {
+    // Push live depuis l'admin : les coefs s'appliquent immediatement
+    recomputeAdcCoefs(
+      d.r_div_sig_kohm, d.r_div_gnd_kohm,
+      d.r_offset_kohm,  d.v_offset_v
+    );
   }
 }
 
@@ -935,8 +970,10 @@ function getCss(varName) {
  */
 function findTrigger(samples, levelV, edge) {
   if (!samples) return -1;
-  // levelV (V_in souhaite) -> niveau en mV a la broche ADC
-  const mvRef = (levelV * GAIN + OFFSET) * 1000;
+  // levelV (V_sig souhaite) -> niveau en mV a la broche ADC
+  // Formule inverse : V_ADC = (V_sig - b) / a
+  const mvRef = ((levelV - ADC_COEF_B) / ADC_COEF_A) * 1000;
+  if (!isFinite(mvRef)) return -1;
   const N = samples.length;
   for (let i = 1; i < N; i++) {
     if (edge === 'rising'  && samples[i-1] <= mvRef && samples[i] > mvRef)
