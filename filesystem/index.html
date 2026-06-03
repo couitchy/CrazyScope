@@ -492,14 +492,14 @@ select:focus { outline: none; border-color: var(--accent); }
         <div class="ctrl-title-left">Acquisition</div>
       </div>
       <div class="ctrl-row">
-        <div class="ctrl-label">Mode <span class="val" id="acq-info">—</span></div>
-        <select id="quality"></select>
-        <div class="ctrl-sub" id="acq-detail"></div>
-      </div>
-      <div class="ctrl-row">
         <div class="btn-group">
           <button class="btn primary" id="btn-run">▶ RUN</button>
         </div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Mode <span class="val" id="acq-info">—</span></div>
+        <select id="quality"></select>
+        <div class="ctrl-sub" id="acq-detail"></div>
       </div>
     </div>
 
@@ -1002,30 +1002,38 @@ function draw() {
   const src = state.trig.source === 1 ? state.ch1.samples : state.ch2.samples;
   const trigIdx = findTrigger(src, state.trig.level, state.trig.edge);
 
-  // On etale les N samples sur toute la largeur de l'ecran.
-  // pxPerSample : largeur d'un sample. Toute la profondeur acquise est
-  // visible (c'est ce qu'on veut : exploiter tous les carreaux).
-  const pxPerSample = W / (N - 1);
-
-  // Decalage horizontal : la position H (hpos %) decale la trace.
-  // Si trigger trouve, on aligne le front sur le centre + hpos.
-  let xShift = (state.hpos / 100) * W;
+  // Strategie de placement :
+  // - Sans trigger : on etale les N samples sur toute la largeur (simple).
+  // - Avec trigger : decalage CIRCULAIRE (wrap). Le sample trigIdx est
+  //   place au centre (+hpos), les autres samples occupent l'ecran en
+  //   "boucle". Tout l'ecran reste rempli, peu importe ou tombe le trigger
+  //   dans la trame. Pour un signal periodique stable, le raccord au bord
+  //   est invisible ; pour un transitoire on voit un petit saut (acceptable).
+  let pxPerSample, idxToX;
   if (trigIdx >= 0) {
-    // amener le sample trigIdx a la position (0.5 + hpos/100) * W
+    pxPerSample = W / N;
     const targetX = (0.5 + state.hpos / 100) * W;
-    xShift = targetX - trigIdx * pxPerSample;
+    const half = N / 2;
+    idxToX = function(i) {
+      let off = i - trigIdx;
+      if      (off < -half) off += N;
+      else if (off >= half) off -= N;
+      return targetX + off * pxPerSample;
+    };
+  } else {
+    pxPerSample = W / (N - 1);
+    const xShift = (state.hpos / 100) * W;
+    idxToX = function(i) { return i * pxPerSample + xShift; };
   }
 
-  function idxToX(i) { return i * pxPerSample + xShift; }
-
-  drawChannel(W, H, state.ch1, getCss('--ch1-color'), idxToX);
-  drawChannel(W, H, state.ch2, getCss('--ch2-color'), idxToX);
+  drawChannel(W, H, state.ch1, getCss('--ch1-color'), idxToX, pxPerSample);
+  drawChannel(W, H, state.ch2, getCss('--ch2-color'), idxToX, pxPerSample);
 
   if (trigIdx >= 0) drawTriggerMarker(W, H, idxToX(trigIdx));
   drawTraceLabels(W, H);
 }
 
-function drawChannel(W, H, ch, color, idxToX) {
+function drawChannel(W, H, ch, color, idxToX, pxPerSample) {
   if (!ch.enabled || !ch.samples) return;
   const vdiv = VDIV_STEPS[ch.vdiv_idx];
   const fullScaleV = vdiv * 4; // 4 div au dessus et 4 en dessous du centre
@@ -1037,14 +1045,24 @@ function drawChannel(W, H, ch, color, idxToX) {
   ctx.beginPath();
 
   const N = ch.samples.length;
-  let started = false;
+  // Seuil pour detecter un "saut" entre deux samples consecutifs : si
+  // l'ecart en X est nettement plus grand que la distance normale entre
+  // samples, c'est qu'on a traverse le bord du wrap circulaire -> on
+  // commence un nouveau sous-trace (moveTo) au lieu d'un lineTo qui
+  // tracerait une ligne diagonale a travers tout l'ecran.
+  const wrapThreshold = Math.abs(pxPerSample) * 5;
+  let prevX = -Infinity;
   for (let i = 0; i < N; i++) {
     const v = adcToVoltage(ch.samples[i]) - ch.offset;
     const y = yCenter - (v / fullScaleV) * (H / 2);
     const x = idxToX(i);
-    if (x < -5 || x > W + 5) { started = false; continue; }
-    if (!started) { ctx.moveTo(x, y); started = true; }
-    else ctx.lineTo(x, y);
+    if (x < -5 || x > W + 5) { prevX = -Infinity; continue; }
+    if (prevX === -Infinity || Math.abs(x - prevX) > wrapThreshold) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+    prevX = x;
   }
   ctx.stroke();
 }
@@ -1187,11 +1205,13 @@ function syncSamplesToTimebase(send) {
   const tdiv = TDIV_STEPS[state.tdiv_idx];
   if (!tdiv) return;
   const acq = tdivToAcq(tdiv, p.fs);
-  const changed = (acq.spf !== state.spf) || (acq.decim !== state.decim);
   state.spf   = acq.spf;
   state.decim = acq.decim;
   updateAcqInfo();
-  if (send && changed) {
+  if (send) {
+    // On envoie toujours quand l'utilisateur agit : le binding 'input' du
+    // slider met deja a jour state.spf/decim pour le retour visuel, donc
+    // un test "changed" comparant a state.spf serait toujours faux ici.
     wsSend({ type: 'set_config',
              samples_per_frame: state.spf,
              decimation: state.decim });
