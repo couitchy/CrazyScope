@@ -1004,21 +1004,24 @@ function draw() {
 
   // Strategie de placement :
   // - Sans trigger : on etale les N samples sur toute la largeur (simple).
-  // - Avec trigger : decalage CIRCULAIRE (wrap). Le sample trigIdx est
-  //   place au centre (+hpos), les autres samples occupent l'ecran en
-  //   "boucle". Tout l'ecran reste rempli, peu importe ou tombe le trigger
-  //   dans la trame. Pour un signal periodique stable, le raccord au bord
-  //   est invisible ; pour un transitoire on voit un petit saut (acceptable).
+  // - Avec trigger : ROTATION CIRCULAIRE. L'ecran est toujours plein (les
+  //   N samples occupent strictement [0, W[ avec un point de wrap qui
+  //   reste sur le bord). Position H fait "tourner" la trace : le sample
+  //   du trigger glisse a la position desiree, et les autres tournent
+  //   autour. Pour un signal periodique stable, le raccord au bord est
+  //   invisible ; pour un transitoire on voit un petit decrochage.
   let pxPerSample, idxToX;
   if (trigIdx >= 0) {
     pxPerSample = W / N;
-    const targetX = (0.5 + state.hpos / 100) * W;
-    const half = N / 2;
+    // startIdx = indice du sample affiche a x=0. Choisi pour que le sample
+    // trigIdx tombe a la position desiree (0.5 + hpos/100) * W.
+    const shift = (0.5 + state.hpos / 100) * N;
+    let startIdx = trigIdx - Math.round(shift);
+    startIdx = ((startIdx % N) + N) % N;   // ramene dans [0, N)
     idxToX = function(i) {
-      let off = i - trigIdx;
-      if      (off < -half) off += N;
-      else if (off >= half) off -= N;
-      return targetX + off * pxPerSample;
+      let off = i - startIdx;
+      if (off < 0) off += N;
+      return off * pxPerSample;
     };
   } else {
     pxPerSample = W / (N - 1);

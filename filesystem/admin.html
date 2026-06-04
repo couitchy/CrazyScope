@@ -609,18 +609,18 @@
       <!-- ===== Etage analogique ===== -->
       <div id="analog-content" class="tab-content">
         <div class="wifi-section">
-          <pre class="schema-ascii">                        Roffset
-        ┌────────────────/\/\/\───────────┐                     Vsig:    analog signal to be measured
-     + ┌┴┐                                │                     Vadc:    input pin of ESP32 (GPIO34 for CH1 | GPIO35 for CH2)
-Voffset│ │                                │                     Voffset: offset voltage so that AC signals can be measured (typically 3.3V)
-     - └┬┘                                │
-        │        ┌────/\/\/\──────────────●──────────o Vadc     Recommended values:
-        │        │    Rdiv_sig            │                       with Rdiv_sig = 76k, Rdiv_gnd = 12k and Roffset = 10k
-        │       / \                       │                       it is possible to safely measure +/- 25 VAC
-        │ Vsig │ ~ │                   /\/\/\ Rdiv_gnd
-        │       \ /                       │                     Default values (no front-end):
-────────┴────────┴────────────────────────┴──────────o            with Rdiv_sig = 0, Rdiv_gnd = ∞ and Roffset = ∞
-                         GND                                      it is only possible to measure 0–3.3 V</pre>
+          <pre class="schema-ascii">                      Roffset
+      ┌────────────────/\/\/\───────────┐                     Vsig:    analog signal to be measured
+   + ┌┴┐                                │                     Vadc:    input pin of ESP32 (GPIO34=CH1, GPIO35=CH2)
+     │ │ Voffset                        │                     Voffset: 3.3V (typ.) offset to allow for AC signals
+   - └┬┘                                │
+      │        ┌────/\/\/\──────────────●──────────o Vadc     Recommended values:
+      │        │    Rdiv_sig            │                       Rdiv_sig = 76k, Rdiv_gnd = 12k and Roffset = 10k
+      │       / \                       │                       => it is possible to safely measure +/- 25 VAC
+      │ Vsig │ ~ │                   /\/\/\ Rdiv_gnd
+      │       \ /                       │                     Default values (no front-end):
+──────┴────────┴────────────────────────┴──────────o            with Rdiv_sig = 0, Rdiv_gnd = ∞ and Roffset = ∞
+                       GND                                      => it is only possible to measure 0–3.3 V</pre>
           <div class="wifi-form">
             <div class="form-group">
               <label class="form-label">R<sub>div_sig</sub></label>

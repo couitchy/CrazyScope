@@ -71,7 +71,12 @@
 
 // Buffer DMA : doit etre un multiple de SOC_ADC_DIGI_DATA_BYTES_PER_CONV (4)
 // On taille large pour absorber les jitters Wi-Fi
-#define DMA_RING_BUFFER_SIZE 8192
+// Buffers DMA de l'ADC continu.
+// max_store_buf_size : taille du buffer circulaire interne. Doit etre assez
+// grand pour absorber les latences quand le Wi-Fi sature brievement le CPU
+// (sinon overrun -> samples perdus -> glitchs visibles dans la trace).
+// A 800 kHz x 4 octets/sample = 3.2 MB/s, 32 ko = ~10 ms de marge.
+#define DMA_RING_BUFFER_SIZE 32768
 #define DMA_FRAME_SIZE       2048
 
 // Nombre maxi de samples effectifs envoyes par canal et par trame WebSocket
@@ -248,8 +253,10 @@ void setup() {
     applyTestSignal();
 
     // --- Task acquisition (Core 1) ----------------------------------------
+    // Task acquisition (Core 1, priorite elevee pour limiter la preemption
+    // par le scheduler quand le Wi-Fi est actif sur Core 0)
     xTaskCreatePinnedToCore(
-        acquisitionTask, "acq", 8192, NULL, 2,
+        acquisitionTask, "acq", 8192, NULL, 10,
         &acquisitionTaskHandle, 1);
 
     Serial.println(F("==== Boot termine ===="));
