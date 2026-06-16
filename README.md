@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/7452899d-4287-4e80-9178-42f58f441bcc" height="300" alt="1" />
+</p>
+
 # ⚡ Crazy Scope
 
 **Crazy Scope** est un projet d'oscilloscope dual channel Wi-Fi open-source, propulsé par un simple **ESP32**.
