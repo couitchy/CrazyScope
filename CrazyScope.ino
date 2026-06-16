@@ -1,27 +1,23 @@
-/**
- * ============================================================================
- *  Crazy Scope - Mini oscilloscope Wi-Fi pour ESP32 DEV MODULE
- *  ----------------------------------------------------------------------------
- *  ETAPE 1 : Acquisition I2S/DMA + Wi-Fi (AP/STA) + WebSocket binaire
- *
- *  Materiel :
+/*
+ * ==================================================================================================
+ *  Crazy Scope - Mini oscilloscope Wi-Fi
+ * ==================================================================================================
  *   - ESP32 DEV MODULE (ESP32-WROOM-32)
  *   - CH1 sur GPIO34 (ADC1_CH6) - entree analogique 0..3.3V
  *   - CH2 sur GPIO35 (ADC1_CH7) - entree analogique 0..3.3V
- *   - LED statut sur GPIO2 (LED on-board)
- *   - Etage analogique : pont diviseur 90k/10k + offset 1.65V
- *                        (cf. README pour le schema)
+ *   - Etage analogique à configurer dans l'interface d'administration
  *
- *  Librairies a installer (Library Manager) :
- *   - ESPAsyncWebServer    (par ESP32Async ou esphome)
- *   - AsyncTCP             (idem)
- *   - ArduinoJson v7
- *  Plus le core ESP32 Arduino v3.0+ (necessaire pour adc_continuous)
+ *  Bibliothèques requises sous Arduino IDE :
+ *    - ArduinoJson         (Benoit Blanchon)
+ *    - ESP Async WebServer (ESP32Async)
+ *    - Async TCP           (ESP32Async)
  *
- *  Auteur : Crazy Scope project + assistance Claude
- * ============================================================================
+ *  Partition Scheme : "Default 4MB with spiffs (1.2MB APP/1.5MB SPIFFS)"
+ *
+ *  Auteur : Couitchy pour l'architecture, Opus 4.8 pour l'implémentation
+ * ==================================================================================================
  */
-
+ 
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <LittleFS.h>
